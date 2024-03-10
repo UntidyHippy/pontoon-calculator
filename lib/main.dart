@@ -1,3 +1,5 @@
+
+
 import 'package:flutter/material.dart';
 
 import 'dart:io';
@@ -7,11 +9,23 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math' as math;
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:logging/logging.dart';
 
-//
-// ToDo - 'Done' button not activating on the start-up screen. (Fixed 29/2/2024)
+// debug conditional print  (Fixed 8/3/2024)
+// refactor to interpolate strings (Fixed 8/3/2024)
+// 'Done' button not activating on the start-up screen. (Fixed 29/2/2024)
+
+// Logger used by this app
+final log = Logger('PontoonFeesApp');
 
 void main() {
+
+  // Configure logging
+  Logger.root.level = Level.ALL; // defaults to Level.INFO
+  Logger.root.onRecord.listen((record) {
+    print('${record.level.name}: ${record.time}: ${record.message}');
+  });
+
   // Because am running the app after getting preferences, I have
   // to run this first otherwise it complains.
   WidgetsFlutterBinding.ensureInitialized();
@@ -42,7 +56,7 @@ class Rates {
   static const double membersDiscountRate = 0.65;
 
   static String getFormattedRate(double rate) {
-    return '£' + rate.toStringAsFixed(2);
+    return "£${rate.toStringAsFixed(2)}";
   }
 }
 
@@ -97,11 +111,9 @@ class Constants {
       fontWeight: FontWeight.bold, color: Colors.blue, height: 1.5);
 
   static String formatDate(DateTime dateTime) {
-    return dateTime.day.toString() +
-        '/' +
-        dateTime.month.toString() +
-        '/' +
-        dateTime.year.toString();
+    return "${dateTime.day.toString()}/"
+        "${dateTime.month.toString()}/"
+        "${dateTime.year.toString()}";
   }
 }
 
@@ -134,9 +146,9 @@ class CalculatedStayList {
   static List<CalculatedStay> buildList(Map<String, dynamic> decodedStays) {
     List<dynamic> decodedJson = decodedStays['stays'];
     List<CalculatedStay> stays = <CalculatedStay>[];
-    decodedJson.forEach((elem) {
+    for (var elem in decodedJson) {
       stays.add(CalculatedStay.fromJson(elem));
-    });
+    }
     return stays;
   }
 }
@@ -196,56 +208,36 @@ class CalculatedStay {
   };
 
   void printCalculatedStay() {
-    print(boatName +
-        ' ' +
-        startStay.toString() +
-        ' ' +
-        endStay.toString() +
-        ' £' +
-        fee +
-        ' ' +
-        isMember.toString() +
-        ' ');
+    log.info("${boatName.toString()} ${startStay.toString()} ${endStay.toString()} "
+        "£ ${fee.toString()} "
+        "${isMember.toString()} ");
   }
 
   String getBreakdown() {
-    String visitorRateText = daysAtVisitorRate.toString() +
-        ' day(s) at ' +
-        Rates.getFormattedRate(visitorRate) +
+    String visitorRateText = "${daysAtVisitorRate.toString()}"
+        " day(s) at "
+        "${Rates.getFormattedRate(visitorRate)}"
         '/M ';
-    String standardRateText = daysAtStandardRate.toString() +
-        ' day(s) at ' +
-        Rates.getFormattedRate(standardRate) +
-        '/M ';
-    String discountRateText = daysAtMembersDiscountRate.toString() +
-        ' day(s) at ' +
-        Rates.getFormattedRate(membersDiscountRate) +
-        '/M';
+    String standardRateText = "${daysAtStandardRate.toString()}"
+        " day(s) at "
+        "${Rates.getFormattedRate(standardRate)}"
+        "/M ";
+    String discountRateText = "${daysAtMembersDiscountRate.toString()}"
+        " day(s) at "
+        "${Rates.getFormattedRate(membersDiscountRate)}"
+        "/M";
 
-    print(
+    log.info(
         'Days at visitor $visitorRateText $standardRateText $discountRateText');
 
     List<String> days = ['Mon', 'Tues', 'Weds', 'Thurs', 'Fri', 'Sat', 'Sun'];
 
-    return 'Arrival\n' +
-        days[startStay.weekday].toString() +
-        ' - ' +
-        Constants.formatDate(startStay) +
-        '\n\n' +
-        'Departure\n' +
-        days[endStay.weekday].toString() +
-        ' - ' +
-        Constants.formatDate(endStay) +
-        '\n\n' +
-        '$boatName (' +
-        boatLengthNearestHalfMeter +
-        'M)\n\n' +
-        '' +
-        (daysAtVisitorRate == 0 ? '' : '$visitorRateText\n\n') +
-        (daysAtStandardRate == 0 ? '' : '$standardRateText\n\n') +
-        (daysAtMembersDiscountRate == 0 ? '' : '$discountRateText\n\n') +
-        'Fee: ' +
-        fee;
+    return 'Arrival\n${days[startStay.weekday]} - ${Constants.formatDate(startStay)}\n\n'
+        'Departure\n${days[endStay.weekday]} - ${Constants.formatDate(endStay)}\n\n'
+        '$boatName (${boatLengthNearestHalfMeter}M)\n\n'
+        '${daysAtVisitorRate == 0 ? '' : '$visitorRateText\n\n'}'
+        '${daysAtStandardRate == 0 ? '' : '$standardRateText\n\n'}'
+        '${daysAtMembersDiscountRate == 0 ? '' : '$discountRateText\n\n'}Fee: $fee';
   }
 
   void calculateFee() {
@@ -266,10 +258,10 @@ class CalculatedStay {
         endStay.difference(d).inDays > 0;
         d = d.add(day)) {*/
 
-    print('Start stay:' + startStay.toString());
-    print('End stay:' + endStay.toString());
+    log.info('Start stay:$startStay');
+    log.info('End stay:$endStay');
 
-    //print('Difference in days ' + endStay.difference(d).inDays.toString());
+    //log.info('Difference in days ' + endStay.difference(d).inDays.toString());
 
     for (DateTime d = startStay;
     endStay.difference(d).inDays > 0;
@@ -283,11 +275,11 @@ class CalculatedStay {
       if (d.weekday == DateTime.friday || d.weekday == DateTime.saturday) {
         pontoonCharge += Rates.standardRate * boatLength;
         daysAtStandardRate++;
-        print("Discount day");
+        log.info("Discount day");
       } else {
         pontoonCharge += Rates.membersDiscountRate * boatLength;
         daysAtMembersDiscountRate++;
-        print("Non Discount day");
+        log.info("Non Discount day");
       }
     }
 
@@ -337,9 +329,9 @@ class AppData {
 
   static bool getIsBoatDataComplete() {
 
-    print('TEST: boatLength: $boatLength');
-    print('TEST: boatName: $boatName');
-    print('TEST: isMember: $isMember');
+    log.info('TEST: boatLength: $boatLength');
+    log.info('TEST: boatName: $boatName');
+    log.info('TEST: isMember: $isMember');
 
     if (boatLength == "") return false;
     if (boatName == "" || boatName == '') return false;
@@ -369,7 +361,7 @@ class AppData {
   }
 
   static bool getIsMember() {
-    //print('Stack trace: \n' + StackTrace.current.toString());
+    //log.info('Stack trace: \n' + StackTrace.current.toString());
     //if (isMember == null) isMember = false;
     return isMember;
   }
@@ -384,7 +376,7 @@ class AppData {
     final prefs = await SharedPreferences.getInstance();
     String staysEncoded = prefs.getString('Stays') as String;
 
-    print ("What value does String have4 in _getStays? " +  staysEncoded);
+    log.info ("What value does String have4 in _getStays? $staysEncoded");
 
     // First time run the app there will be nothing here
     /* if (staysEncoded == null) {
@@ -395,7 +387,7 @@ class AppData {
     CalculatedStayList testStayList = CalculatedStayList.fromJson(decodedStays);
 
     // For debugging
-    print('Test doing it by calculated stay');
+    log.info('Test doing it by calculated stay');
     for (var element in testStayList.stays) {
       element.printCalculatedStay();
     }
@@ -447,7 +439,7 @@ class AppData {
     final prefs = SharedPreferences.getInstance();
     stays = listOfStays;
     prefs.whenComplete(() {
-      print('Encoding stays');
+      log.info('Encoding stays');
       for (var element in stays) {
         element.printCalculatedStay();
       }
@@ -457,49 +449,49 @@ class AppData {
     });
   }
 
-  static void setBoatLength(String _boatLength) {
+  static void setBoatLength(String valueToUse) {
     final prefs = SharedPreferences.getInstance();
     prefs.whenComplete(() {
-      prefs.then((value) => value.setString('BoatLength', _boatLength));
+      prefs.then((value) => value.setString('BoatLength', valueToUse));
     });
-    boatLength = _boatLength;
+    boatLength = valueToUse;
   }
 
-  static void setBoatName(String _boatName) {
+  static void setBoatName(String valueToUse) {
     final prefs = SharedPreferences.getInstance();
     prefs.whenComplete(() {
-      prefs.then((value) => value.setString('BoatName', _boatName));
+      prefs.then((value) => value.setString('BoatName', valueToUse));
     });
     //await prefs.setString('BoatName', _boatName);
-    boatName = _boatName;
+    boatName = valueToUse;
   }
 
-  static void setIsMember(bool _isMember) {
+  static void setIsMember(bool valueToUse) {
     final prefs = SharedPreferences.getInstance();
     prefs.whenComplete(() {
-      prefs.then((value) => value.setBool('IsMember', _isMember));
+      prefs.then((value) => value.setBool('IsMember', valueToUse));
     });
     //await prefs.setBool('IsMember', _isMember);
-    isMember = _isMember;
+    isMember = valueToUse;
   }
 
-  static void setIsInFeet(bool _isInFeet) {
+  static void setIsInFeet(bool valueToUse) {
     final prefs = SharedPreferences.getInstance();
     prefs.whenComplete(() {
-      prefs.then((value) => value.setBool('IsInFeet', _isInFeet));
+      prefs.then((value) => value.setBool('IsInFeet', valueToUse));
     });
     //await prefs.setBool('IsMember', _isMember);
-    isInFeet = _isInFeet;
+    isInFeet = valueToUse;
   }
 
-  static void setShowWelcomeDialog(bool _showWelcomeDialog) {
+  static void setShowWelcomeDialog(bool valueToUse) {
     final prefs = SharedPreferences.getInstance();
     prefs.whenComplete(() {
       prefs.then(
-              (value) => value.setBool('ShowWelcomeDialog', _showWelcomeDialog));
+              (value) => value.setBool('ShowWelcomeDialog', valueToUse));
     });
     //await prefs.setBool('IsMember', _isMember);
-    showWelcomeDialog = _showWelcomeDialog;
+    showWelcomeDialog = valueToUse;
   }
 
   static void calculateToNearestHalfMeter() {
@@ -525,13 +517,13 @@ class AppData {
     int wholeNumber =
     boatLengthDouble.truncateToDouble().toInt(); //int.parse(list.first);
 
-    print('Boat length double: $boatLengthDouble');
+    log.info('Boat length double: $boatLengthDouble');
 
-    print('Boat length whole number: $wholeNumber');
+    log.info('Boat length whole number: $wholeNumber');
 
     double decimalPart = boatLengthDouble - wholeNumber;
 
-    print('Decimal part: $decimalPart');
+    log.info('Decimal part: $decimalPart');
 
     String rounded = '.0';
 
@@ -577,9 +569,9 @@ class MyApp extends StatelessWidget {
       initialRoute: '/',
       routes: {
         // When navigating to the "/" route, build the FirstScreen widget.
-        '/': (context) => HomePage(),
+        '/': (context) => const HomePage(),
         // When navigating to the "/second" route, build the SecondScreen widget.
-        '/second': (context) => CalculateFee(),
+        '/second': (context) => const CalculateFee(),
       },
 
       //home: CalculateFee(title: 'Flutter Demo Home Page'),
@@ -594,10 +586,10 @@ class HomePage extends StatefulWidget {
   final String? title;
 
   @override
-  _HomePageState createState() => _HomePageState();
+  HomePageState createState() => HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class HomePageState extends State<HomePage> {
   TextEditingController boatLengthTextEditingController =
   TextEditingController();
   TextEditingController boatNameTextEditingController = TextEditingController();
@@ -607,7 +599,7 @@ class _HomePageState extends State<HomePage> {
 
   pushToScreen(BuildContext context) {
     Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => CalculateFee()));
+        .push(MaterialPageRoute(builder: (_) => const CalculateFee()));
   }
 
   @override
@@ -663,19 +655,19 @@ class _HomePageState extends State<HomePage> {
       String value, CalculatedStay calcStay) async {
     switch (value) {
       case 'Show calculation':
-        print('Show calculation');
+        log.info('Show calculation');
         //calcStay.calculateFee();
         showCalculationDialog(calcStay);
         break;
 
       case 'Mark as paid':
-        print('Mark as Paid');
+        log.info('Mark as Paid');
         setState(() => calcStay.paid = true);
         AppData.setStays(AppData.stays);
         break;
 
       case 'Mark as owed':
-        print('Mark as Owed');
+        log.info('Mark as Owed');
         setState(() => calcStay.paid = false);
         AppData.setStays(AppData.stays);
         break;
@@ -700,18 +692,18 @@ class _HomePageState extends State<HomePage> {
       builder: (BuildContext context) {
         // return object of type Dialog
         return AlertDialog(
-          title: new Text("Are you sure?"),
-          content: new Text(text),
+          title: const Text("Are you sure?"),
+          content: Text(text),
           actions: <Widget>[
             // usually buttons at the bottom of the dialog
-            new TextButton(
-              child: new Text("Yes"),
+            TextButton(
+              child: const Text("Yes"),
               onPressed: () {
                 Navigator.of(context).pop("Yes");
               },
             ),
-            new TextButton(
-              child: new Text("No"),
+            TextButton(
+              child: const Text("No"),
               onPressed: () {
                 Navigator.of(context).pop("No");
               },
@@ -737,8 +729,8 @@ class _HomePageState extends State<HomePage> {
                     ])),
                 actions: <Widget>[
                   // usually buttons at the bottom of the dialog
-                  new TextButton(
-                    child: new Text("Done"),
+                   TextButton(
+                    child: const Text("Done"),
                     onPressed: () {
                       Navigator.of(context).pop("Done");
                     },
@@ -751,23 +743,18 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<dynamic> showRatesDialogue() async {
-    String ratesText = 'Visitor Rates:\n' +
-        Rates.getFormattedRate(Rates.visitorRate) +
-        '/M per night\n\n' +
-        'Members\' Rates:\n' +
-        'Sunday to Thursday night\n' +
-        Rates.getFormattedRate(Rates.standardRate) +
-        '/M per night\n\n' +
-        'Friday and Saturday night\n' +
-        Rates.getFormattedRate(Rates.membersDiscountRate) +
-        '/M per night\n';
+    String ratesText = 'Visitor Rates:\n'
+        '${Rates.getFormattedRate(Rates.visitorRate)}/M per night\n\n'
+        'Members\' Rates:\nSunday to Thursday night\n'
+        '${Rates.getFormattedRate(Rates.standardRate)}/M per night\n\nFriday and Saturday night\n'
+        '${Rates.getFormattedRate(Rates.membersDiscountRate)}/M per night\n';
 
     return showMessageDialogue('Rates', ratesText);
   }
 
   Future<dynamic> showHowToPayDialogue() async {
     String howToPayText =
-        'These are the different ways you can pay:\n\n' + 'blah blah blah';
+        'These are the different ways you can pay:\n\n blah blah blah';
 
     return showMessageDialogue('How to pay', howToPayText);
   }
@@ -786,26 +773,23 @@ class _HomePageState extends State<HomePage> {
             builder: (context, setState) {
               // return object of type Dialog
               return AlertDialog(
-                title: Text('Welcome'),
+                title: const Text('Welcome'),
                 content: SingleChildScrollView(
                     child: Column(children: [
                       Text(welcomeText, style: Constants.welcomeTextStyle),
-                      Container(
-                        //color: Colors.green,
-                        child: CheckboxListTile(
-                            title: const Text('Do not show this message again'),
-                            value: !AppData.getShowWelcomeDialog(),
-                            onChanged: (bool? value) {
-                              setState(() {
-                                AppData.setShowWelcomeDialog( value == null ? false : !value);
-                              });
-                            }),
-                      )
+                      CheckboxListTile(
+                          title: const Text('Do not show this message again'),
+                          value: !AppData.getShowWelcomeDialog(),
+                          onChanged: (bool? value) {
+                            setState(() {
+                              AppData.setShowWelcomeDialog( value == null ? false : !value);
+                            });
+                          })
                     ])),
                 actions: <Widget>[
                   // usually buttons at the bottom of the dialog
-                  new TextButton(
-                    child: new Text("Done"),
+                   TextButton(
+                    child: const Text("Done"),
                     onPressed: () {
                       Navigator.of(context).pop("Done");
                     },
@@ -824,19 +808,19 @@ class _HomePageState extends State<HomePage> {
       builder: (BuildContext context) {
         // return object of type Dialog
         return AlertDialog(
-          title: new Text('Pontoon Fee Calculation'),
-          content: new Text(calcStay.getBreakdown()),
+          title: const Text('Pontoon Fee Calculation'),
+          content: Text(calcStay.getBreakdown()),
           actions: <Widget>[
             // usually buttons at the bottom of the dialog
-            new TextButton(
-              child: new Text("Copy to clipboard"),
+            TextButton(
+              child: const Text("Copy to clipboard"),
               onPressed: () {
                 Clipboard.setData(
-                    new ClipboardData(text: calcStay.getBreakdown()));
+                    ClipboardData(text: calcStay.getBreakdown()));
               },
             ),
-            new TextButton(
-              child: new Text("Close"),
+            TextButton(
+              child: const Text("Close"),
               onPressed: () {
                 Navigator.of(context).pop("Close");
               },
@@ -851,7 +835,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Stays on the pontoon'),
+        title: const Text('Stays on the pontoon'),
         actions: <Widget>[
           PopupMenuButton<String>(
             onSelected: handleClick,
@@ -910,11 +894,10 @@ class _HomePageState extends State<HomePage> {
          */
 
       floatingActionButton: FloatingActionButton(
-          child: Icon(Icons.add, color: Colors.white),
-          //onPressed: () => this.setState(() => pushToScreen(context)),
           onPressed: (() => Navigator.pushNamed(context, '/second')
               .whenComplete(
-                  () => setState(() => print('Setting state Done'))))),
+                  () => setState(() => log.info('Setting state Done')))),
+          child: const Icon(Icons.add, color: Colors.white)),
     );
   }
 
@@ -929,37 +912,33 @@ class _HomePageState extends State<HomePage> {
                 children: <TextSpan>[
                   TextSpan(
                     style: Constants.boatNameStyle,
-                    text: calculatedStay.boatName +
-                        ' (' +
-                        calculatedStay.boatLengthNearestHalfMeter +
-                        'M)',
+                    text: '${calculatedStay.boatName} (${calculatedStay.boatLengthNearestHalfMeter}M)',
                   ),
-                  TextSpan(text: '\n'),
-                  TextSpan(style: Constants.listTextStyle, text: 'Arrival: '),
+                  const TextSpan(text: '\n'),
+                  const TextSpan(style: Constants.listTextStyle, text: 'Arrival: '),
                   // TextSpan(text: '\n'),
                   TextSpan(
                       style: Constants.boldStyle,
-                      text: '      ' +
-                          Constants.formatDate(calculatedStay.startStay)),
-                  TextSpan(text: '\n'),
-                  TextSpan(style: Constants.listTextStyle, text: 'Departure: '),
+                      text: '      ${Constants.formatDate(calculatedStay.startStay)}'),
+                  const TextSpan(text: '\n'),
+                  const TextSpan(style: Constants.listTextStyle, text: 'Departure: '),
                   //TextSpan(text: '\n'),
                   TextSpan(
                       style: Constants.boldStyle,
                       text: Constants.formatDate(calculatedStay.endStay)),
-                  TextSpan(text: '\n'),
+                  const TextSpan(text: '\n'),
 
                   if (calculatedStay.paid == false)
-                    TextSpan(
+                    const TextSpan(
                       style: Constants.feeOwedStyle,
                       text: 'Marked as owed',
                     )
                   else
-                    TextSpan(
+                    const TextSpan(
                       style: Constants.feePaidStyle,
                       text: 'Marked as paid',
                     ),
-                  TextSpan(text: '\n'),
+                  const TextSpan(text: '\n'),
                 ]),
           )),
       RichText(
@@ -972,9 +951,9 @@ class _HomePageState extends State<HomePage> {
                   style: calculatedStay.paid
                       ? Constants.itemBackgroundFeePaidStyle
                       : Constants.itemBackgroundFeeOwedStyle,
-                  text: '' + calculatedStay.fee,
+                  text: calculatedStay.fee,
                 ),
-                TextSpan(text: '\n'),
+                const TextSpan(text: '\n'),
               ])),
     ]);
   }
@@ -982,17 +961,17 @@ class _HomePageState extends State<HomePage> {
   List<Widget> listBuilder() {
     List<Container> listTiles = <Container>[];
 
-    //print('List Builder ' + AppData.getStays().length.toString());
+    //log.info('List Builder ' + AppData.getStays().length.toString());
 
     AppData.getStays().map((calculatedStay) {
-      print('Adding ListTile ' + calculatedStay.fee);
+      log.info('Adding ListTile ${calculatedStay.fee}');
       listTiles.add(Container(
           decoration: calculatedStay.paid
-              ? new BoxDecoration(color: Colors.brown[50])
-              : new BoxDecoration(color: Colors.blue[50]),
-          child: new ListTile(
+              ? BoxDecoration(color: Colors.brown[50])
+              : BoxDecoration(color: Colors.blue[50]),
+          child: ListTile(
             title: Container(
-                decoration: new BoxDecoration(), //color: Colors.green),
+                decoration: const BoxDecoration(), //color: Colors.green),
                 child: getRichTextForCalcStay(calculatedStay)),
             trailing: PopupMenuButton<String>(
               onSelected: (value) =>
@@ -1023,7 +1002,7 @@ class _HomePageState extends State<HomePage> {
         builder: (BuildContext context) {
           return StatefulBuilder(builder: (context, setState) {
             return AlertDialog(
-                title: new Text("About you and your boat"),
+                title: const Text("About you and your boat"),
                 content: SingleChildScrollView(
                   // Center is a layout widget. It takes a single child and positions it
                   // in the middle of the parent.
@@ -1031,7 +1010,7 @@ class _HomePageState extends State<HomePage> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: <Widget>[
                           TextField(
-                            decoration: new InputDecoration(
+                            decoration: const InputDecoration(
                                 labelText: "Boat name",
                                 labelStyle: Constants.textLabelStyle),
                             keyboardType: TextInputType.text,
@@ -1047,22 +1026,22 @@ class _HomePageState extends State<HomePage> {
                           ),
                           Row(children: <Widget>[
                             ConstrainedBox(
-                                constraints: BoxConstraints(
+                                constraints: const BoxConstraints(
                                   minWidth: 70,
                                   minHeight: 70,
                                   maxWidth: 80,
                                   maxHeight: 150,
                                 ),
                                 child: TextField(
-                                    decoration: new InputDecoration(
+                                    decoration: const InputDecoration(
                                         labelText: "Length",
                                         labelStyle: Constants.textLabelStyle),
-                                    keyboardType: TextInputType.numberWithOptions(
+                                    keyboardType: const TextInputType.numberWithOptions(
                                         decimal: true),
                                     onChanged: (text) {
                                       setState(() {
                                         AppData.setBoatLength(text);
-                                        print("Changed length to: " + text);
+                                        log.info("Changed length to: $text");
                                         AppData.calculateToNearestHalfMeter();
                                       });
                                     },
@@ -1082,7 +1061,7 @@ class _HomePageState extends State<HomePage> {
                                     AppData.calculateToNearestHalfMeter();
                                   });
                                 }),
-                            Text(
+                            const Text(
                               'ft',
                               style: TextStyle(
                                   color: Colors.black, fontWeight: FontWeight.bold),
@@ -1097,30 +1076,30 @@ class _HomePageState extends State<HomePage> {
                                     AppData.calculateToNearestHalfMeter();
                                   });
                                 }),
-                            Text(
+                            const Text(
                               'M',
                               style: TextStyle(
                                   color: Colors.black, fontWeight: FontWeight.bold),
                             ),
                           ]),
-                          Text(
+                          const Text(
                             'Boat length to nearest half meter:',
                             style: TextStyle(
                                 color: Colors.black, fontWeight: FontWeight.normal),
                           ),
                           Text(
-                            AppData.boatLengthNearestHalfMeter + 'M',
-                            style: TextStyle(
+                            '${AppData.boatLengthNearestHalfMeter}M',
+                            style: const TextStyle(
                                 color: Colors.blueGrey,
                                 fontWeight: FontWeight.normal,
                                 fontSize: 25),
                           ),
-                          Text(
+                          const Text(
                             ' ',
                             style: TextStyle(
                                 color: Colors.black, fontWeight: FontWeight.normal),
                           ),
-                          Text(
+                          const Text(
                               'Are you a member of FCYC or RFYC, or are you a visitor?',
                               style: Constants.questionsStyle),
                           Row(children: <Widget>[
@@ -1129,12 +1108,12 @@ class _HomePageState extends State<HomePage> {
                                 groupValue: memberOrVisitorRadioValue,
                                 onChanged: (value) {
                                   setState(() {
-                                    print('Member or visitor radio value: $value');
+                                    log.info('Member or visitor radio value: $value');
                                     memberOrVisitorRadioValue = value as int;
                                     AppData.setIsMember(true);
                                   });
                                 }),
-                            Text(
+                            const Text(
                               'Member',
                               style: TextStyle(
                                   color: Colors.black,
@@ -1147,12 +1126,12 @@ class _HomePageState extends State<HomePage> {
                                 groupValue: memberOrVisitorRadioValue,
                                 onChanged: (value) {
                                   setState(() {
-                                    print('Member or visitor radio value: $value');
+                                    log.info('Member or visitor radio value: $value');
                                     memberOrVisitorRadioValue = value as int;
                                     AppData.setIsMember(false);
                                   });
                                 }),
-                            Text(
+                            const Text(
                               'Visitor',
                               style: TextStyle(
                                   color: Colors.black,
@@ -1160,12 +1139,12 @@ class _HomePageState extends State<HomePage> {
                             ),
                           ]),
                           ElevatedButton(
-                            child: Text('Done'),
                             onPressed: AppData.getIsBoatDataComplete()
                                 ? () {
                               Navigator.pop(context);
                             }
-                                : null, // If null then button deactivated
+                                : null,
+                            child: const Text('Done'), // If null then button deactivated
                           ),
                         ])));
           });
@@ -1174,7 +1153,7 @@ class _HomePageState extends State<HomePage> {
 }
 
 class CalculateFee extends StatefulWidget {
-  CalculateFee({Key? key, this.title}) : super(key: key);
+  const CalculateFee({Key? key, this.title}) : super(key: key);
 
   // This widget is the home page of your application. It is stateful, meaning
   // that it has a State object (defined below) that contains fields that affect
@@ -1188,11 +1167,11 @@ class CalculateFee extends StatefulWidget {
   final String? title;
 
   @override
-  _CalculateFeePageState createState() => _CalculateFeePageState();
+  CalculateFeePageState createState() => CalculateFeePageState();
 }
 
-class _CalculateFeePageState extends State<CalculateFee> {
-  CalculatedStay calculatedStay = new CalculatedStay(
+class CalculateFeePageState extends State<CalculateFee> {
+  CalculatedStay calculatedStay = CalculatedStay(
       AppData.getBoatName(),
       DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day),
       DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day),
@@ -1243,27 +1222,20 @@ class _CalculateFeePageState extends State<CalculateFee> {
   }
 
   Widget _getRates() {
-    String text = 'Sun to Thu £' +
-        Rates.membersDiscountRate.toString() +
-        'Overnight rate for members\n ' +
-        'Fri to Sat £' +
-        Rates.standardRate.toString() +
-        '\n';
+    String text = 'Sun to Thu £${Rates.membersDiscountRate}Overnight rate for members\n Fri to Sat £${Rates.standardRate}\n';
 
     if (AppData.isMember == false) {
-      return Text('Overnight rate for visitors: £' +
-          Rates.visitorRate.toString() +
-          ' per meter');
+      return const Text('Overnight rate for visitors: £${Rates.visitorRate} per meter');
     }
 
-    return Table(children: [
+    return Table(children: const [
       TableRow(children: [
         TableCell(child: Text('Fri to Sat ')),
-        TableCell(child: Text('£' + Rates.standardRate.toString())),
+        TableCell(child: Text('£${Rates.standardRate}')),
       ]),
       TableRow(children: [
         TableCell(child: Text('Sun to Thu ')),
-        TableCell(child: Text('£' + Rates.membersDiscountRate.toString())),
+        TableCell(child: Text('£${Rates.membersDiscountRate}')),
       ]),
     ]);
   }
@@ -1271,30 +1243,30 @@ class _CalculateFeePageState extends State<CalculateFee> {
   Widget getSetDateTable(BuildContext context) {
     return Table(children: [
       getRateTableRow("Boat", AppData.getBoatName()),
-      getRateTableRow("Length", AppData.boatLengthNearestHalfMeter + 'M'),
+      getRateTableRow("Length", '${AppData.boatLengthNearestHalfMeter}M'),
       TableRow(children: [
         TableCell(
+            verticalAlignment: TableCellVerticalAlignment.middle,
             child: ConstrainedBox(
-                constraints: BoxConstraints(
+                constraints: const BoxConstraints(
                   minWidth: 50,
                   minHeight: Constants.rowHeight,
                   maxWidth: 70,
                   maxHeight: Constants.rowHeight,
                 ),
-                child: Center(
+                child: const Center(
                     child: Text('Arrival',
                         style: TextStyle(
                             color: Colors.black,
                             fontWeight: FontWeight.normal,
-                            fontSize: 20)))),
-            verticalAlignment: TableCellVerticalAlignment.middle),
+                            fontSize: 20))))),
         TableCell(
           child: ElevatedButton (
             onPressed: () => _selectStartDate(context), // Refer step 3
             child: Text(
               Constants.formatDate(calculatedStay.startStay),
               style:
-              TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+              const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
             ),
           ),
         )
@@ -1303,13 +1275,13 @@ class _CalculateFeePageState extends State<CalculateFee> {
         TableCell(
             verticalAlignment: TableCellVerticalAlignment.middle,
             child: ConstrainedBox(
-                constraints: BoxConstraints(
+                constraints: const BoxConstraints(
                   minWidth: 50,
                   minHeight: Constants.rowHeight,
                   maxWidth: 70,
                   maxHeight: Constants.rowHeight,
                 ),
-                child: Center(
+                child: const Center(
                     child: Text('Departure',
                         style: TextStyle(
                             color: Colors.black,
@@ -1321,24 +1293,22 @@ class _CalculateFeePageState extends State<CalculateFee> {
             child: Text(
               Constants.formatDate(calculatedStay.endStay),
               style:
-              TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+              const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
             ),
           ),
         ),
       ]),
       if (calculatedStay.daysAtVisitorRate != 0)
         getRateTableRow(
-            'Days at ' + Rates.getFormattedRate(Rates.visitorRate) + '/M',
+            'Days at ${Rates.getFormattedRate(Rates.visitorRate)}/M',
             calculatedStay.daysAtVisitorRate.toString()),
       if (calculatedStay.daysAtStandardRate != 0)
         getRateTableRow(
-            'Days at ' + Rates.getFormattedRate(Rates.standardRate) + '/M',
+            'Days at ${Rates.getFormattedRate(Rates.standardRate)}/M',
             calculatedStay.daysAtStandardRate.toString()),
       if (calculatedStay.daysAtMembersDiscountRate != 0)
         getRateTableRow(
-            'Days at ' +
-                Rates.getFormattedRate(Rates.membersDiscountRate) +
-                '/M',
+            'Days at ${Rates.getFormattedRate(Rates.membersDiscountRate)}/M',
             calculatedStay.daysAtMembersDiscountRate.toString()),
       getRateTableRow(
           "Fee", Rates.getFormattedRate(calculatedStay.pontoonCharge)),
@@ -1350,7 +1320,7 @@ class _CalculateFeePageState extends State<CalculateFee> {
       TableCell(
         verticalAlignment: TableCellVerticalAlignment.middle,
         child: ConstrainedBox(
-            constraints: BoxConstraints(
+            constraints: const BoxConstraints(
               minWidth: 50,
               minHeight: Constants.rowHeight,
               maxWidth: 70,
@@ -1358,19 +1328,19 @@ class _CalculateFeePageState extends State<CalculateFee> {
             ),
             child: Center(
                 child: Text(rate,
-                    style: TextStyle(
+                    style: const TextStyle(
                         color: Colors.black,
                         fontWeight: FontWeight.normal,
                         fontSize: 20)))),
       ),
       TableCell(
+          verticalAlignment: TableCellVerticalAlignment.middle,
           child: Center(
               child: Text(days,
-                  style: TextStyle(
+                  style: const TextStyle(
                       color: Colors.black,
                       fontWeight: FontWeight.normal,
-                      fontSize: 20))),
-          verticalAlignment: TableCellVerticalAlignment.middle),
+                      fontSize: 20)))),
     ]);
   }
 
@@ -1400,7 +1370,7 @@ class _CalculateFeePageState extends State<CalculateFee> {
         appBar: AppBar(
           // Here we take the value from the MyHomePage object that was created by
           // the App.build method, and use it to set our appbar title.
-          title: Text("Calculate fee"),
+          title: const Text("Calculate fee"),
         ),
         body: Center(
           child: SingleChildScrollView(
@@ -1439,9 +1409,9 @@ class _CalculateFeePageState extends State<CalculateFee> {
                     padding: const EdgeInsets.all(20.0),
                     child: getSetDateTable(context)),
                 Text(
-                  '$errorMsg',
+                  errorMsg,
                   style:
-                  TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                  const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
                 ),
                 ElevatedButton (
                   onPressed: calculatedStay.pontoonCharge == 0
@@ -1451,7 +1421,7 @@ class _CalculateFeePageState extends State<CalculateFee> {
                     AppData.setStays(AppData.stays);
                     Navigator.pop(context);
                   },
-                  child: Text('Save'),
+                  child: const Text('Save'),
                 ),
                 /*
             Text(
@@ -1585,7 +1555,7 @@ class _SetUpPageState extends State<SetUpBlaBla> {
               controller: boatNameTextEditingController,
               onChanged: (text) {
                 BoatData.setBoatName(text);
-                print('Boat name: $text');
+                log.info('Boat name: $text');
               },
               //inputFormatters: <TextInputFormatter>[
               //   DecimalTextInputFormatter (decimalRange: 2)
@@ -1662,7 +1632,7 @@ class _SetUpPageState extends State<SetUpBlaBla> {
                   groupValue: memberOrVisitorRadioValue,
                   onChanged: (value) {
                     setState(() {
-                      print('Member or visitor radio value: $value');
+                      log.info('Member or visitor radio value: $value');
                       memberOrVisitorRadioValue = value;
                       BoatData.setIsMember(true);
                     });
@@ -1679,7 +1649,7 @@ class _SetUpPageState extends State<SetUpBlaBla> {
                   groupValue: memberOrVisitorRadioValue,
                   onChanged: (value) {
                     setState(() {
-                      print('Member or visitor radio value: $value');
+                      log.info('Member or visitor radio value: $value');
                       memberOrVisitorRadioValue = value;
                       BoatData.setIsMember(false);
                     });
