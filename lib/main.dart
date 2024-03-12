@@ -11,6 +11,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 
+// ToDo - be able to fees based on new information and get these from t'Internet
+// tidied how async, then and after calls are handled (12/3/2024)
 // debug conditional print  (Fixed 8/3/2024)
 // refactor to interpolate strings (Fixed 8/3/2024)
 // 'Done' button not activating on the start-up screen. (Fixed 29/2/2024)
@@ -50,17 +52,8 @@ void main() {
 }
 
 
-class Rates {
-  static const double standardRate = 1.30;
-  static const double visitorRate = 2.60;
-  static const double membersDiscountRate = 0.65;
-
-  static String getFormattedRate(double rate) {
-    return "£${rate.toStringAsFixed(2)}";
-  }
-}
-
 class Constants {
+
   static const double rowHeight = 50;
 
   static const TextStyle boldStyle = TextStyle(fontWeight: FontWeight.bold, height: 1.2);
@@ -117,6 +110,17 @@ class Constants {
   }
 }
 
+class Rates {
+
+  static const double standardRate = 1.30;
+  static const double visitorRate = 2.60;
+  static const double membersDiscountRate = 0.65;
+
+  static String getFormattedRate(double rate) {
+    return "£${rate.toStringAsFixed(2)}";
+  }
+}
+
 /*
  Wrapper class for list of Calculated stays to be able to
  serialise this list into JSON so that it can be stored in
@@ -154,6 +158,7 @@ class CalculatedStayList {
 }
 
 class CalculatedStay {
+
   String boatName;
   DateTime startStay;
   DateTime endStay;
@@ -208,12 +213,14 @@ class CalculatedStay {
   };
 
   void printCalculatedStay() {
+
     log.info("${boatName.toString()} ${startStay.toString()} ${endStay.toString()} "
         "£ ${fee.toString()} "
         "${isMember.toString()} ");
   }
 
   String getBreakdown() {
+
     String visitorRateText = "${daysAtVisitorRate.toString()}"
         " day(s) at "
         "${Rates.getFormattedRate(visitorRate)}"
@@ -240,7 +247,9 @@ class CalculatedStay {
         '${daysAtMembersDiscountRate == 0 ? '' : '$discountRateText\n\n'}Fee: $fee';
   }
 
+
   void calculateFee() {
+
     pontoonCharge = 0;
 
     daysAtVisitorRate = 0;
@@ -264,8 +273,9 @@ class CalculatedStay {
     //log.info('Difference in days ' + endStay.difference(d).inDays.toString());
 
     for (DateTime d = startStay;
-    endStay.difference(d).inDays > 0;
-    d = d.add(day)) {
+      endStay.difference(d).inDays > 0;
+      d = d.add(day)) {
+
       if (isMember == false) {
         pontoonCharge += Rates.visitorRate * boatLength;
         daysAtVisitorRate++;
@@ -276,6 +286,7 @@ class CalculatedStay {
         pontoonCharge += Rates.standardRate * boatLength;
         daysAtStandardRate++;
         log.info("Discount day");
+
       } else {
         pontoonCharge += Rates.membersDiscountRate * boatLength;
         daysAtMembersDiscountRate++;
@@ -287,6 +298,7 @@ class CalculatedStay {
   }
 
   static List<CalculatedStay> getCalculatedStayTestList() {
+
     List<CalculatedStay> list = <CalculatedStay>[];
     list.add(CalculatedStay("Dorado1", DateTime.now(), DateTime.now(), "34.54",
         true, 1.20, 2.40, 0.6, "7.5"));
@@ -301,7 +313,9 @@ class CalculatedStay {
   }
 }
 
+
 class AppData {
+
   static String boatLength = "";
   static String boatName = "";
   static bool isMember = true;
@@ -314,6 +328,7 @@ class AppData {
   static String boatLengthNearestHalfMeter = '';
 
   static Future initBoatData() async {
+
     List<Future> futureList = <Future>[];
 
     futureList.add(initBoatLength().then((value) => boatLength = value));
@@ -324,6 +339,7 @@ class AppData {
     futureList.add(
         initShowWelcomeDialog().then((value) => showWelcomeDialog = value));
 
+    // this hangs around for all the items in the list to complete
     await Future.wait(futureList).whenComplete(() => gotBoatData = true);
   }
 
@@ -436,61 +452,68 @@ class AppData {
    */
 
   static void setStays(List<CalculatedStay> listOfStays) {
+
     final prefs = SharedPreferences.getInstance();
     stays = listOfStays;
-    prefs.whenComplete(() {
+
+    prefs.then((value) { // value is the value of the completed 'prefs'
+
       log.info('Encoding stays');
+
       for (var element in stays) {
         element.printCalculatedStay();
       }
 
-      prefs.then((value) =>
-          value.setString('Stays', json.encode(CalculatedStayList(stays))));
-    });
+      value.setString('Stays', json.encode(CalculatedStayList(stays)));
+    }); // No error checking
+
   }
 
   static void setBoatLength(String valueToUse) {
+
     final prefs = SharedPreferences.getInstance();
-    prefs.whenComplete(() {
-      prefs.then((value) => value.setString('BoatLength', valueToUse));
+    prefs.then((value) {
+      value.setString('BoatLength', valueToUse);
     });
+
     boatLength = valueToUse;
   }
 
   static void setBoatName(String valueToUse) {
+
     final prefs = SharedPreferences.getInstance();
-    prefs.whenComplete(() {
-      prefs.then((value) => value.setString('BoatName', valueToUse));
+    prefs.then((value) {
+      value.setString('BoatName', valueToUse);
     });
-    //await prefs.setString('BoatName', _boatName);
+
     boatName = valueToUse;
   }
 
   static void setIsMember(bool valueToUse) {
+
     final prefs = SharedPreferences.getInstance();
-    prefs.whenComplete(() {
-      prefs.then((value) => value.setBool('IsMember', valueToUse));
+    prefs.then((value) {
+      value.setBool('IsMember', valueToUse);
     });
-    //await prefs.setBool('IsMember', _isMember);
+
     isMember = valueToUse;
   }
 
   static void setIsInFeet(bool valueToUse) {
     final prefs = SharedPreferences.getInstance();
-    prefs.whenComplete(() {
-      prefs.then((value) => value.setBool('IsInFeet', valueToUse));
+    prefs.then((value) {
+      value.setBool('IsInFeet', valueToUse);
     });
-    //await prefs.setBool('IsMember', _isMember);
+
     isInFeet = valueToUse;
   }
 
   static void setShowWelcomeDialog(bool valueToUse) {
     final prefs = SharedPreferences.getInstance();
-    prefs.whenComplete(() {
-      prefs.then(
-              (value) => value.setBool('ShowWelcomeDialog', valueToUse));
+    prefs.then((value) {
+      value.setBool('ShowWelcomeDialog', valueToUse);
     });
-    //await prefs.setBool('IsMember', _isMember);
+
     showWelcomeDialog = valueToUse;
   }
 
@@ -536,9 +559,6 @@ class AppData {
     boatLengthNearestHalfMeter = '$wholeNumber$rounded';
   }
 }
-
-
-
 
 
 class MyApp extends StatelessWidget {
