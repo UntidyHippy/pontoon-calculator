@@ -11,7 +11,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 
-// Next - be able to fees based on new information and get these from t'Internet
+// Next -  be able to fees based on new information and get these from t'Internet
 // tidied how async, then and after calls are  handled (12/3/2024)
 // debug conditional print  (Fixed 8/3/2024)
 // refactor to interpolate strings (Fixed 8/3/2024)
