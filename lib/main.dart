@@ -12,7 +12,7 @@ import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 
 // ToDo - be able to fees based on new information and get these from t'Internet
-// tidied how async, then and after calls are handled (12/3/2024)
+// tidied how async, then and after calls are  handled (12/3/2024)
 // debug conditional print  (Fixed 8/3/2024)
 // refactor to interpolate strings (Fixed 8/3/2024)
 // 'Done' button not activating on the start-up screen. (Fixed 29/2/2024)
