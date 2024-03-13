@@ -1,5 +1,3 @@
-
-
 import 'package:flutter/material.dart';
 
 import 'dart:io';
@@ -11,6 +9,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 
+// Reimplimented the 'Rates' class to be able to initiate it with json (13/03/2024)
 // Next -  be able to fees based on new information and get these from t'Internet
 // tidied how async, then and after calls are  handled (12/3/2024)
 // debug conditional print  (Fixed 8/3/2024)
@@ -20,8 +19,11 @@ import 'package:logging/logging.dart';
 // Logger used by this app
 final log = Logger('PontoonFeesApp');
 
-void main() {
+// Rates used to calculated fees.
+final rates = Rates(1.30, 2.60, 0.65);
 
+
+void main() {
   // Configure logging
   Logger.root.level = Level.ALL; // defaults to Level.INFO
   Logger.root.onRecord.listen((record) {
@@ -51,12 +53,11 @@ void main() {
   });
 }
 
-
 class Constants {
-
   static const double rowHeight = 50;
 
-  static const TextStyle boldStyle = TextStyle(fontWeight: FontWeight.bold, height: 1.2);
+  static const TextStyle boldStyle =
+      TextStyle(fontWeight: FontWeight.bold, height: 1.2);
 
   static const TextStyle textLabelStyle = TextStyle(
       color: Colors.black45,
@@ -97,11 +98,11 @@ class Constants {
   static final TextStyle boatNameStyle = TextStyle(
       fontSize: 20, fontWeight: FontWeight.normal, color: Colors.purple[75]);
 
-  static const TextStyle feePaidStyle = TextStyle(
-      fontWeight: FontWeight.bold, color: Colors.brown, height: 1.5);
+  static const TextStyle feePaidStyle =
+      TextStyle(fontWeight: FontWeight.bold, color: Colors.brown, height: 1.5);
 
-  static const TextStyle feeOwedStyle = TextStyle(
-      fontWeight: FontWeight.bold, color: Colors.blue, height: 1.5);
+  static const TextStyle feeOwedStyle =
+      TextStyle(fontWeight: FontWeight.bold, color: Colors.blue, height: 1.5);
 
   static String formatDate(DateTime dateTime) {
     return "${dateTime.day.toString()}/"
@@ -111,12 +112,26 @@ class Constants {
 }
 
 class Rates {
+  double standardRate;
+  double visitorRate;
+  double membersDiscountRate;
 
-  static const double standardRate = 1.30;
-  static const double visitorRate = 2.60;
-  static const double membersDiscountRate = 0.65;
+  Rates (this.standardRate, this.visitorRate, this.membersDiscountRate);
 
-  static String getFormattedRate(double rate) {
+  // ToDo do I need to convert the string to a double?
+  Rates.fromJson(Map<String, dynamic> json)
+      : standardRate = json['standardRate'],
+        visitorRate = json['visitorRate'],
+        membersDiscountRate = json['membersDiscountRate'];
+
+  Map<String, dynamic> toJson() => {
+        'standardRate': standardRate,
+        'visitorRate': visitorRate,
+        'membersDiscountRate': membersDiscountRate
+      };
+
+   // Could be static
+   String getFormattedRate(double rate) {
     return "£${rate.toStringAsFixed(2)}";
   }
 }
@@ -128,20 +143,19 @@ class Rates {
 
  */
 class CalculatedStayList {
-
   final List<CalculatedStay> stays;
 
   CalculatedStayList(this.stays);
 
   CalculatedStayList.fromJson(Map<String, dynamic> json)
       : stays = json['stays'] != null
-  //? List<CalculatedStay>.from(json['stays'])
-      ? buildList(json)
-      : <CalculatedStay>[];
+            //? List<CalculatedStay>.from(json['stays'])
+            ? buildList(json)
+            : <CalculatedStay>[];
 
   Map<String, dynamic> toJson() => {
-    'stays': stays,
-  };
+        'stays': stays,
+      };
 
   List<CalculatedStay> getStays() {
     return stays;
@@ -158,7 +172,6 @@ class CalculatedStayList {
 }
 
 class CalculatedStay {
-
   String boatName;
   DateTime startStay;
   DateTime endStay;
@@ -201,37 +214,36 @@ class CalculatedStay {
         boatLengthNearestHalfMeter = json['lengthToHalfMeter'];
 
   Map<String, dynamic> toJson() => {
-    'boatName': boatName,
-    'startDate': startStay.toString(),
-    'endDate': endStay.toString(),
-    'fee': fee,
-    'isMember': isMember,
-    'standardRate': standardRate,
-    'visitorRate': visitorRate,
-    'membersDiscountRate': membersDiscountRate,
-    'lengthToHalfMeter': boatLengthNearestHalfMeter
-  };
+        'boatName': boatName,
+        'startDate': startStay.toString(),
+        'endDate': endStay.toString(),
+        'fee': fee,
+        'isMember': isMember,
+        'standardRate': standardRate,
+        'visitorRate': visitorRate,
+        'membersDiscountRate': membersDiscountRate,
+        'lengthToHalfMeter': boatLengthNearestHalfMeter
+      };
 
   void printCalculatedStay() {
-
-    log.info("${boatName.toString()} ${startStay.toString()} ${endStay.toString()} "
+    log.info(
+        "${boatName.toString()} ${startStay.toString()} ${endStay.toString()} "
         "£ ${fee.toString()} "
         "${isMember.toString()} ");
   }
 
   String getBreakdown() {
-
     String visitorRateText = "${daysAtVisitorRate.toString()}"
         " day(s) at "
-        "${Rates.getFormattedRate(visitorRate)}"
+        "${rates.getFormattedRate(visitorRate)}"
         '/M ';
     String standardRateText = "${daysAtStandardRate.toString()}"
         " day(s) at "
-        "${Rates.getFormattedRate(standardRate)}"
+        "${rates.getFormattedRate(standardRate)}"
         "/M ";
     String discountRateText = "${daysAtMembersDiscountRate.toString()}"
         " day(s) at "
-        "${Rates.getFormattedRate(membersDiscountRate)}"
+        "${rates.getFormattedRate(membersDiscountRate)}"
         "/M";
 
     log.info(
@@ -247,9 +259,7 @@ class CalculatedStay {
         '${daysAtMembersDiscountRate == 0 ? '' : '$discountRateText\n\n'}Fee: $fee';
   }
 
-
   void calculateFee() {
-
     pontoonCharge = 0;
 
     daysAtVisitorRate = 0;
@@ -273,32 +283,29 @@ class CalculatedStay {
     //log.info('Difference in days ' + endStay.difference(d).inDays.toString());
 
     for (DateTime d = startStay;
-      endStay.difference(d).inDays > 0;
-      d = d.add(day)) {
-
+        endStay.difference(d).inDays > 0;
+        d = d.add(day)) {
       if (isMember == false) {
-        pontoonCharge += Rates.visitorRate * boatLength;
+        pontoonCharge += rates.visitorRate * boatLength;
         daysAtVisitorRate++;
         continue;
       }
 
       if (d.weekday == DateTime.friday || d.weekday == DateTime.saturday) {
-        pontoonCharge += Rates.standardRate * boatLength;
+        pontoonCharge += rates.standardRate * boatLength;
         daysAtStandardRate++;
         log.info("Discount day");
-
       } else {
-        pontoonCharge += Rates.membersDiscountRate * boatLength;
+        pontoonCharge += rates.membersDiscountRate * boatLength;
         daysAtMembersDiscountRate++;
         log.info("Non Discount day");
       }
     }
 
-    fee = Rates.getFormattedRate(pontoonCharge);
+    fee = rates.getFormattedRate(pontoonCharge);
   }
 
   static List<CalculatedStay> getCalculatedStayTestList() {
-
     List<CalculatedStay> list = <CalculatedStay>[];
     list.add(CalculatedStay("Dorado1", DateTime.now(), DateTime.now(), "34.54",
         true, 1.20, 2.40, 0.6, "7.5"));
@@ -313,9 +320,7 @@ class CalculatedStay {
   }
 }
 
-
 class AppData {
-
   static String boatLength = "";
   static String boatName = "";
   static bool isMember = true;
@@ -328,7 +333,6 @@ class AppData {
   static String boatLengthNearestHalfMeter = '';
 
   static Future initBoatData() async {
-
     List<Future> futureList = <Future>[];
 
     futureList.add(initBoatLength().then((value) => boatLength = value));
@@ -344,7 +348,6 @@ class AppData {
   }
 
   static bool getIsBoatDataComplete() {
-
     log.info('TEST: boatLength: $boatLength');
     log.info('TEST: boatName: $boatName');
     log.info('TEST: isMember: $isMember');
@@ -353,7 +356,6 @@ class AppData {
     if (boatName == "" || boatName == '') return false;
 
     return true;
-
   }
 
   static List<CalculatedStay> getStays() {
@@ -387,12 +389,11 @@ class AppData {
     return showWelcomeDialog;
   }
 
-
   static Future<List<CalculatedStay>> _getStays() async {
     final prefs = await SharedPreferences.getInstance();
     String staysEncoded = prefs.getString('Stays') as String;
 
-    log.info ("What value does String have4 in _getStays? $staysEncoded");
+    log.info("What value does String have4 in _getStays? $staysEncoded");
 
     // First time run the app there will be nothing here
     /* if (staysEncoded == null) {
@@ -411,16 +412,15 @@ class AppData {
     return testStayList.stays;
   }
 
-  static Future<String> nullSafeGetStringPref (String key, String defaultValue) async {
-
+  static Future<String> nullSafeGetStringPref(
+      String key, String defaultValue) async {
     final prefs = await SharedPreferences.getInstance();
     String? value = prefs.getString(key);
     value ?? defaultValue; // If value is null, set it to the default value
     return value as String; // this isn't null safe
   }
 
-  static Future<bool> nullSafeGetBoolPref (String key, bool defaultValue) async {
-
+  static Future<bool> nullSafeGetBoolPref(String key, bool defaultValue) async {
     final prefs = await SharedPreferences.getInstance();
     bool? value = prefs.getBool(key);
     value ??= defaultValue; // If value is null, set it to the default value
@@ -452,11 +452,11 @@ class AppData {
    */
 
   static void setStays(List<CalculatedStay> listOfStays) {
-
     final prefs = SharedPreferences.getInstance();
     stays = listOfStays;
 
-    prefs.then((value) { // value is the value of the completed 'prefs'
+    prefs.then((value) {
+      // value is the value of the completed 'prefs'
 
       log.info('Encoding stays');
 
@@ -466,11 +466,9 @@ class AppData {
 
       value.setString('Stays', json.encode(CalculatedStayList(stays)));
     }); // No error checking
-
   }
 
   static void setBoatLength(String valueToUse) {
-
     final prefs = SharedPreferences.getInstance();
     prefs.then((value) {
       value.setString('BoatLength', valueToUse);
@@ -480,7 +478,6 @@ class AppData {
   }
 
   static void setBoatName(String valueToUse) {
-
     final prefs = SharedPreferences.getInstance();
     prefs.then((value) {
       value.setString('BoatName', valueToUse);
@@ -490,7 +487,6 @@ class AppData {
   }
 
   static void setIsMember(bool valueToUse) {
-
     final prefs = SharedPreferences.getInstance();
     prefs.then((value) {
       value.setBool('IsMember', valueToUse);
@@ -538,7 +534,7 @@ class AppData {
     // String boatLengthString = boatLengthDouble.toString();
     // List<String> list = boatLengthString.split("\.");
     int wholeNumber =
-    boatLengthDouble.truncateToDouble().toInt(); //int.parse(list.first);
+        boatLengthDouble.truncateToDouble().toInt(); //int.parse(list.first);
 
     log.info('Boat length double: $boatLengthDouble');
 
@@ -559,7 +555,6 @@ class AppData {
     boatLengthNearestHalfMeter = '$wholeNumber$rounded';
   }
 }
-
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -611,7 +606,7 @@ class HomePage extends StatefulWidget {
 
 class HomePageState extends State<HomePage> {
   TextEditingController boatLengthTextEditingController =
-  TextEditingController();
+      TextEditingController();
   TextEditingController boatNameTextEditingController = TextEditingController();
 
   int memberOrVisitorRadioValue = -1;
@@ -652,8 +647,8 @@ class HomePageState extends State<HomePage> {
         });
       });
     } else if (AppData.getShowWelcomeDialog()) {
-      WidgetsBinding.instance.addPostFrameCallback((_) =>
-          showWelcomeDialogue());
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => showWelcomeDialogue());
     }
   }
 
@@ -745,11 +740,11 @@ class HomePageState extends State<HomePage> {
                 title: Text(title),
                 content: SingleChildScrollView(
                     child: Column(children: [
-                      Text(text, style: Constants.welcomeTextStyle),
-                    ])),
+                  Text(text, style: Constants.welcomeTextStyle),
+                ])),
                 actions: <Widget>[
                   // usually buttons at the bottom of the dialog
-                   TextButton(
+                  TextButton(
                     child: const Text("Done"),
                     onPressed: () {
                       Navigator.of(context).pop("Done");
@@ -764,10 +759,10 @@ class HomePageState extends State<HomePage> {
 
   Future<dynamic> showRatesDialogue() async {
     String ratesText = 'Visitor Rates:\n'
-        '${Rates.getFormattedRate(Rates.visitorRate)}/M per night\n\n'
+        '${rates.getFormattedRate(rates.visitorRate)}/M per night\n\n'
         'Members\' Rates:\nSunday to Thursday night\n'
-        '${Rates.getFormattedRate(Rates.standardRate)}/M per night\n\nFriday and Saturday night\n'
-        '${Rates.getFormattedRate(Rates.membersDiscountRate)}/M per night\n';
+        '${rates.getFormattedRate(rates.standardRate)}/M per night\n\nFriday and Saturday night\n'
+        '${rates.getFormattedRate(rates.membersDiscountRate)}/M per night\n';
 
     return showMessageDialogue('Rates', ratesText);
   }
@@ -796,19 +791,20 @@ class HomePageState extends State<HomePage> {
                 title: const Text('Welcome'),
                 content: SingleChildScrollView(
                     child: Column(children: [
-                      Text(welcomeText, style: Constants.welcomeTextStyle),
-                      CheckboxListTile(
-                          title: const Text('Do not show this message again'),
-                          value: !AppData.getShowWelcomeDialog(),
-                          onChanged: (bool? value) {
-                            setState(() {
-                              AppData.setShowWelcomeDialog( value == null ? false : !value);
-                            });
-                          })
-                    ])),
+                  Text(welcomeText, style: Constants.welcomeTextStyle),
+                  CheckboxListTile(
+                      title: const Text('Do not show this message again'),
+                      value: !AppData.getShowWelcomeDialog(),
+                      onChanged: (bool? value) {
+                        setState(() {
+                          AppData.setShowWelcomeDialog(
+                              value == null ? false : !value);
+                        });
+                      })
+                ])),
                 actions: <Widget>[
                   // usually buttons at the bottom of the dialog
-                   TextButton(
+                  TextButton(
                     child: const Text("Done"),
                     onPressed: () {
                       Navigator.of(context).pop("Done");
@@ -835,8 +831,7 @@ class HomePageState extends State<HomePage> {
             TextButton(
               child: const Text("Copy to clipboard"),
               onPressed: () {
-                Clipboard.setData(
-                    ClipboardData(text: calcStay.getBreakdown()));
+                Clipboard.setData(ClipboardData(text: calcStay.getBreakdown()));
               },
             ),
             TextButton(
@@ -925,56 +920,59 @@ class HomePageState extends State<HomePage> {
     return Row(children: [
       Expanded(
           child: RichText(
-            text: TextSpan(
-                style: calculatedStay.paid
-                    ? Constants.baseListPaid
-                    : Constants.baseListOwed,
-                children: <TextSpan>[
-                  TextSpan(
-                    style: Constants.boatNameStyle,
-                    text: '${calculatedStay.boatName} (${calculatedStay.boatLengthNearestHalfMeter}M)',
-                  ),
-                  const TextSpan(text: '\n'),
-                  const TextSpan(style: Constants.listTextStyle, text: 'Arrival: '),
-                  // TextSpan(text: '\n'),
-                  TextSpan(
-                      style: Constants.boldStyle,
-                      text: '      ${Constants.formatDate(calculatedStay.startStay)}'),
-                  const TextSpan(text: '\n'),
-                  const TextSpan(style: Constants.listTextStyle, text: 'Departure: '),
-                  //TextSpan(text: '\n'),
-                  TextSpan(
-                      style: Constants.boldStyle,
-                      text: Constants.formatDate(calculatedStay.endStay)),
-                  const TextSpan(text: '\n'),
+        text: TextSpan(
+            style: calculatedStay.paid
+                ? Constants.baseListPaid
+                : Constants.baseListOwed,
+            children: <TextSpan>[
+              TextSpan(
+                style: Constants.boatNameStyle,
+                text:
+                    '${calculatedStay.boatName} (${calculatedStay.boatLengthNearestHalfMeter}M)',
+              ),
+              const TextSpan(text: '\n'),
+              const TextSpan(style: Constants.listTextStyle, text: 'Arrival: '),
+              // TextSpan(text: '\n'),
+              TextSpan(
+                  style: Constants.boldStyle,
+                  text:
+                      '      ${Constants.formatDate(calculatedStay.startStay)}'),
+              const TextSpan(text: '\n'),
+              const TextSpan(
+                  style: Constants.listTextStyle, text: 'Departure: '),
+              //TextSpan(text: '\n'),
+              TextSpan(
+                  style: Constants.boldStyle,
+                  text: Constants.formatDate(calculatedStay.endStay)),
+              const TextSpan(text: '\n'),
 
-                  if (calculatedStay.paid == false)
-                    const TextSpan(
-                      style: Constants.feeOwedStyle,
-                      text: 'Marked as owed',
-                    )
-                  else
-                    const TextSpan(
-                      style: Constants.feePaidStyle,
-                      text: 'Marked as paid',
-                    ),
-                  const TextSpan(text: '\n'),
-                ]),
-          )),
+              if (calculatedStay.paid == false)
+                const TextSpan(
+                  style: Constants.feeOwedStyle,
+                  text: 'Marked as owed',
+                )
+              else
+                const TextSpan(
+                  style: Constants.feePaidStyle,
+                  text: 'Marked as paid',
+                ),
+              const TextSpan(text: '\n'),
+            ]),
+      )),
       RichText(
           text: TextSpan(
               style: calculatedStay.paid
                   ? Constants.baseListPaid
                   : Constants.baseListOwed,
               children: <TextSpan>[
-                TextSpan(
-                  style: calculatedStay.paid
-                      ? Constants.itemBackgroundFeePaidStyle
-                      : Constants.itemBackgroundFeeOwedStyle,
-                  text: calculatedStay.fee,
-                ),
-                const TextSpan(text: '\n'),
-              ])),
+            TextSpan(
+              style: calculatedStay.paid
+                  ? Constants.itemBackgroundFeePaidStyle
+                  : Constants.itemBackgroundFeeOwedStyle,
+              text: calculatedStay.fee,
+            ),
+            const TextSpan(text: '\n'),
+          ])),
     ]);
   }
 
@@ -1024,149 +1022,153 @@ class HomePageState extends State<HomePage> {
             return AlertDialog(
                 title: const Text("About you and your boat"),
                 content: SingleChildScrollView(
-                  // Center is a layout widget. It takes a single child and positions it
-                  // in the middle of the parent.
+                    // Center is a layout widget. It takes a single child and positions it
+                    // in the middle of the parent.
                     child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: <Widget>[
-                          TextField(
-                            decoration: const InputDecoration(
-                                labelText: "Boat name",
-                                labelStyle: Constants.textLabelStyle),
-                            keyboardType: TextInputType.text,
-                            controller: boatNameTextEditingController,
-                            onChanged: (text) {
-                              setState(() {
-                                AppData.setBoatName(text);
-                              });
-                            },
-                            //inputFormatters: <TextInputFormatter>[
-                            //   DecimalTextInputFormatter (decimalRange: 2)
-                            //]
-                          ),
-                          Row(children: <Widget>[
-                            ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  minWidth: 70,
-                                  minHeight: 70,
-                                  maxWidth: 80,
-                                  maxHeight: 150,
-                                ),
-                                child: TextField(
-                                    decoration: const InputDecoration(
-                                        labelText: "Length",
-                                        labelStyle: Constants.textLabelStyle),
-                                    keyboardType: const TextInputType.numberWithOptions(
+                      TextField(
+                        decoration: const InputDecoration(
+                            labelText: "Boat name",
+                            labelStyle: Constants.textLabelStyle),
+                        keyboardType: TextInputType.text,
+                        controller: boatNameTextEditingController,
+                        onChanged: (text) {
+                          setState(() {
+                            AppData.setBoatName(text);
+                          });
+                        },
+                        //inputFormatters: <TextInputFormatter>[
+                        //   DecimalTextInputFormatter (decimalRange: 2)
+                        //]
+                      ),
+                      Row(children: <Widget>[
+                        ConstrainedBox(
+                            constraints: const BoxConstraints(
+                              minWidth: 70,
+                              minHeight: 70,
+                              maxWidth: 80,
+                              maxHeight: 150,
+                            ),
+                            child: TextField(
+                                decoration: const InputDecoration(
+                                    labelText: "Length",
+                                    labelStyle: Constants.textLabelStyle),
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
                                         decimal: true),
-                                    onChanged: (text) {
-                                      setState(() {
-                                        AppData.setBoatLength(text);
-                                        log.info("Changed length to: $text");
-                                        AppData.calculateToNearestHalfMeter();
-                                      });
-                                    },
-                                    controller: boatLengthTextEditingController,
-                                    inputFormatters: <TextInputFormatter>[
-                                      DecimalTextInputFormatter(
-                                        decimalRange: 2,
-                                      )
-                                    ])),
-                            Radio(
-                                value: 0,
-                                groupValue: feetOrMetersRadioValue,
-                                onChanged: (value) {
+                                onChanged: (text) {
                                   setState(() {
-                                    feetOrMetersRadioValue = value as int;
-                                    AppData.setIsInFeet(true);
+                                    AppData.setBoatLength(text);
+                                    log.info("Changed length to: $text");
                                     AppData.calculateToNearestHalfMeter();
                                   });
-                                }),
-                            const Text(
-                              'ft',
-                              style: TextStyle(
-                                  color: Colors.black, fontWeight: FontWeight.bold),
-                            ),
-                            Radio(
-                                value: 1,
-                                groupValue: feetOrMetersRadioValue,
-                                onChanged: (value) {
-                                  setState(() {
-                                    AppData.setIsInFeet(false);
-                                    feetOrMetersRadioValue = value as int;
-                                    AppData.calculateToNearestHalfMeter();
-                                  });
-                                }),
-                            const Text(
-                              'M',
-                              style: TextStyle(
-                                  color: Colors.black, fontWeight: FontWeight.bold),
-                            ),
-                          ]),
-                          const Text(
-                            'Boat length to nearest half meter:',
-                            style: TextStyle(
-                                color: Colors.black, fontWeight: FontWeight.normal),
-                          ),
-                          Text(
-                            '${AppData.boatLengthNearestHalfMeter}M',
-                            style: const TextStyle(
-                                color: Colors.blueGrey,
-                                fontWeight: FontWeight.normal,
-                                fontSize: 25),
-                          ),
-                          const Text(
-                            ' ',
-                            style: TextStyle(
-                                color: Colors.black, fontWeight: FontWeight.normal),
-                          ),
-                          const Text(
-                              'Are you a member of FCYC or RFYC, or are you a visitor?',
-                              style: Constants.questionsStyle),
-                          Row(children: <Widget>[
-                            Radio(
-                                value: 0,
-                                groupValue: memberOrVisitorRadioValue,
-                                onChanged: (value) {
-                                  setState(() {
-                                    log.info('Member or visitor radio value: $value');
-                                    memberOrVisitorRadioValue = value as int;
-                                    AppData.setIsMember(true);
-                                  });
-                                }),
-                            const Text(
-                              'Member',
-                              style: TextStyle(
-                                  color: Colors.black,
-                                  fontWeight: FontWeight.normal),
-                            ),
-                          ]),
-                          Row(children: <Widget>[
-                            Radio(
-                                value: 1,
-                                groupValue: memberOrVisitorRadioValue,
-                                onChanged: (value) {
-                                  setState(() {
-                                    log.info('Member or visitor radio value: $value');
-                                    memberOrVisitorRadioValue = value as int;
-                                    AppData.setIsMember(false);
-                                  });
-                                }),
-                            const Text(
-                              'Visitor',
-                              style: TextStyle(
-                                  color: Colors.black,
-                                  fontWeight: FontWeight.normal),
-                            ),
-                          ]),
-                          ElevatedButton(
-                            onPressed: AppData.getIsBoatDataComplete()
-                                ? () {
-                              Navigator.pop(context);
-                            }
-                                : null,
-                            child: const Text('Done'), // If null then button deactivated
-                          ),
-                        ])));
+                                },
+                                controller: boatLengthTextEditingController,
+                                inputFormatters: <TextInputFormatter>[
+                                  DecimalTextInputFormatter(
+                                    decimalRange: 2,
+                                  )
+                                ])),
+                        Radio(
+                            value: 0,
+                            groupValue: feetOrMetersRadioValue,
+                            onChanged: (value) {
+                              setState(() {
+                                feetOrMetersRadioValue = value as int;
+                                AppData.setIsInFeet(true);
+                                AppData.calculateToNearestHalfMeter();
+                              });
+                            }),
+                        const Text(
+                          'ft',
+                          style: TextStyle(
+                              color: Colors.black, fontWeight: FontWeight.bold),
+                        ),
+                        Radio(
+                            value: 1,
+                            groupValue: feetOrMetersRadioValue,
+                            onChanged: (value) {
+                              setState(() {
+                                AppData.setIsInFeet(false);
+                                feetOrMetersRadioValue = value as int;
+                                AppData.calculateToNearestHalfMeter();
+                              });
+                            }),
+                        const Text(
+                          'M',
+                          style: TextStyle(
+                              color: Colors.black, fontWeight: FontWeight.bold),
+                        ),
+                      ]),
+                      const Text(
+                        'Boat length to nearest half meter:',
+                        style: TextStyle(
+                            color: Colors.black, fontWeight: FontWeight.normal),
+                      ),
+                      Text(
+                        '${AppData.boatLengthNearestHalfMeter}M',
+                        style: const TextStyle(
+                            color: Colors.blueGrey,
+                            fontWeight: FontWeight.normal,
+                            fontSize: 25),
+                      ),
+                      const Text(
+                        ' ',
+                        style: TextStyle(
+                            color: Colors.black, fontWeight: FontWeight.normal),
+                      ),
+                      const Text(
+                          'Are you a member of FCYC or RFYC, or are you a visitor?',
+                          style: Constants.questionsStyle),
+                      Row(children: <Widget>[
+                        Radio(
+                            value: 0,
+                            groupValue: memberOrVisitorRadioValue,
+                            onChanged: (value) {
+                              setState(() {
+                                log.info(
+                                    'Member or visitor radio value: $value');
+                                memberOrVisitorRadioValue = value as int;
+                                AppData.setIsMember(true);
+                              });
+                            }),
+                        const Text(
+                          'Member',
+                          style: TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.normal),
+                        ),
+                      ]),
+                      Row(children: <Widget>[
+                        Radio(
+                            value: 1,
+                            groupValue: memberOrVisitorRadioValue,
+                            onChanged: (value) {
+                              setState(() {
+                                log.info(
+                                    'Member or visitor radio value: $value');
+                                memberOrVisitorRadioValue = value as int;
+                                AppData.setIsMember(false);
+                              });
+                            }),
+                        const Text(
+                          'Visitor',
+                          style: TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.normal),
+                        ),
+                      ]),
+                      ElevatedButton(
+                        onPressed: AppData.getIsBoatDataComplete()
+                            ? () {
+                                Navigator.pop(context);
+                              }
+                            : null,
+                        child: const Text(
+                            'Done'), // If null then button deactivated
+                      ),
+                    ])));
           });
         });
   }
@@ -1197,9 +1199,9 @@ class CalculateFeePageState extends State<CalculateFee> {
       DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day),
       '',
       AppData.getIsMember(),
-      Rates.standardRate,
-      Rates.visitorRate,
-      Rates.membersDiscountRate,
+      rates.standardRate,
+      rates.visitorRate,
+      rates.membersDiscountRate,
       AppData.boatLengthNearestHalfMeter);
 
   String errorMsg = '';
@@ -1242,20 +1244,22 @@ class CalculateFeePageState extends State<CalculateFee> {
   }
 
   Widget _getRates() {
-    String text = 'Sun to Thu £${Rates.membersDiscountRate}Overnight rate for members\n Fri to Sat £${Rates.standardRate}\n';
+    String text =
+        'Sun to Thu £${rates.membersDiscountRate}Overnight rate for members\n Fri to Sat £${rates.standardRate}\n';
 
     if (AppData.isMember == false) {
-      return const Text('Overnight rate for visitors: £${Rates.visitorRate} per meter');
+      return Text(
+          'Overnight rate for visitors: £${rates.visitorRate} per meter');
     }
 
-    return Table(children: const [
+    return Table(children: [
       TableRow(children: [
-        TableCell(child: Text('Fri to Sat ')),
-        TableCell(child: Text('£${Rates.standardRate}')),
+        const TableCell(child: Text('Fri to Sat ')),
+        TableCell(child: Text('£${rates.standardRate}')),
       ]),
       TableRow(children: [
-        TableCell(child: Text('Sun to Thu ')),
-        TableCell(child: Text('£${Rates.membersDiscountRate}')),
+        const TableCell(child: Text('Sun to Thu ')),
+        TableCell(child: Text('£${rates.membersDiscountRate}')),
       ]),
     ]);
   }
@@ -1281,12 +1285,12 @@ class CalculateFeePageState extends State<CalculateFee> {
                             fontWeight: FontWeight.normal,
                             fontSize: 20))))),
         TableCell(
-          child: ElevatedButton (
+          child: ElevatedButton(
             onPressed: () => _selectStartDate(context), // Refer step 3
             child: Text(
               Constants.formatDate(calculatedStay.startStay),
-              style:
-              const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                  color: Colors.black, fontWeight: FontWeight.bold),
             ),
           ),
         )
@@ -1308,30 +1312,30 @@ class CalculateFeePageState extends State<CalculateFee> {
                             fontWeight: FontWeight.normal,
                             fontSize: 20))))),
         TableCell(
-          child: ElevatedButton (
+          child: ElevatedButton(
             onPressed: () => _selectEndDate(context), // Refer step 3
             child: Text(
               Constants.formatDate(calculatedStay.endStay),
-              style:
-              const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                  color: Colors.black, fontWeight: FontWeight.bold),
             ),
           ),
         ),
       ]),
       if (calculatedStay.daysAtVisitorRate != 0)
         getRateTableRow(
-            'Days at ${Rates.getFormattedRate(Rates.visitorRate)}/M',
+            'Days at ${rates.getFormattedRate(rates.visitorRate)}/M',
             calculatedStay.daysAtVisitorRate.toString()),
       if (calculatedStay.daysAtStandardRate != 0)
         getRateTableRow(
-            'Days at ${Rates.getFormattedRate(Rates.standardRate)}/M',
+            'Days at ${rates.getFormattedRate(rates.standardRate)}/M',
             calculatedStay.daysAtStandardRate.toString()),
       if (calculatedStay.daysAtMembersDiscountRate != 0)
         getRateTableRow(
-            'Days at ${Rates.getFormattedRate(Rates.membersDiscountRate)}/M',
+            'Days at ${rates.getFormattedRate(rates.membersDiscountRate)}/M',
             calculatedStay.daysAtMembersDiscountRate.toString()),
       getRateTableRow(
-          "Fee", Rates.getFormattedRate(calculatedStay.pontoonCharge)),
+          "Fee", rates.getFormattedRate(calculatedStay.pontoonCharge)),
     ]);
   }
 
@@ -1430,17 +1434,17 @@ class CalculateFeePageState extends State<CalculateFee> {
                     child: getSetDateTable(context)),
                 Text(
                   errorMsg,
-                  style:
-                  const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                      color: Colors.red, fontWeight: FontWeight.bold),
                 ),
-                ElevatedButton (
+                ElevatedButton(
                   onPressed: calculatedStay.pontoonCharge == 0
                       ? null
                       : () {
-                    AppData.stays.insert(0, calculatedStay);
-                    AppData.setStays(AppData.stays);
-                    Navigator.pop(context);
-                  },
+                          AppData.stays.insert(0, calculatedStay);
+                          AppData.setStays(AppData.stays);
+                          Navigator.pop(context);
+                        },
                   child: const Text('Save'),
                 ),
                 /*
@@ -1455,14 +1459,14 @@ class CalculateFeePageState extends State<CalculateFee> {
           ),
         )
 
-      /*
+        /*
       floatingActionButton: FloatingActionButton(
         //onPressed: _incrementCounter,
         tooltip: 'Increment',
         child: Icon(Icons.add),
       ), // This trailing comma makes auto-formatting nicer for build methods.
 */
-    );
+        );
   }
 }
 
@@ -1474,9 +1478,9 @@ class DecimalTextInputFormatter extends TextInputFormatter {
 
   @override
   TextEditingValue formatEditUpdate(
-      TextEditingValue oldValue, // unused.
-      TextEditingValue newValue,
-      ) {
+    TextEditingValue oldValue, // unused.
+    TextEditingValue newValue,
+  ) {
     TextSelection newSelection = newValue.selection;
     String truncated = newValue.text;
 
@@ -1484,7 +1488,8 @@ class DecimalTextInputFormatter extends TextInputFormatter {
       String value = newValue.text;
 
       if (value.contains(".") &&
-          value.substring(value.indexOf(".") + 1).length > (decimalRange as int)) {
+          value.substring(value.indexOf(".") + 1).length >
+              (decimalRange as int)) {
         truncated = oldValue.text;
         newSelection = oldValue.selection;
       } else if (value == ".") {
@@ -1813,4 +1818,3 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 }
 */
-
