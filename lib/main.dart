@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'dart:io';
@@ -9,6 +11,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 
+// Need to ask for manual input if can't load rates
+// Now loads latest rates from the server (14/03/2024)
 // Reimplimented the 'Rates' class to be able to initiate it with json (13/03/2024)
 // Next -  be able to fees based on new information and get these from t'Internet
 // tidied how async, then and after calls are  handled (12/3/2024)
@@ -19,11 +23,22 @@ import 'package:logging/logging.dart';
 // Logger used by this app
 final log = Logger('PontoonFeesApp');
 
-// Rates used to calculated fees.
-final rates = Rates(1.30, 2.60, 0.65);
+Map<String, dynamic> decodedRates = json.decode('{"Rates": {'
+    '"standardRate" : "0.05",'
+    '"visitorRate" : "0.15",'
+    '"membersDiscountRate" : "1.50" }}');
 
+// Rates used to calculated fees.
+//final rates = Rates(1.30, 2.60, 0.65);
+
+Rates rates = Rates(1.30, 2.60, 0.65);
 
 void main() {
+  Future<Rates> futureRates = Rates.fetchRates();
+  futureRates.then((r) {
+    rates = r;
+  });
+
   // Configure logging
   Logger.root.level = Level.ALL; // defaults to Level.INFO
   Logger.root.onRecord.listen((record) {
@@ -116,13 +131,12 @@ class Rates {
   double visitorRate;
   double membersDiscountRate;
 
-  Rates (this.standardRate, this.visitorRate, this.membersDiscountRate);
+  Rates(this.standardRate, this.visitorRate, this.membersDiscountRate);
 
-  // ToDo do I need to convert the string to a double?
   Rates.fromJson(Map<String, dynamic> json)
-      : standardRate = json['standardRate'],
-        visitorRate = json['visitorRate'],
-        membersDiscountRate = json['membersDiscountRate'];
+      : standardRate = double.parse(json['standardRate']),
+        visitorRate = double.parse(json['visitorRate']),
+        membersDiscountRate = double.parse(json['membersDiscountRate']);
 
   Map<String, dynamic> toJson() => {
         'standardRate': standardRate,
@@ -130,8 +144,34 @@ class Rates {
         'membersDiscountRate': membersDiscountRate
       };
 
-   // Could be static
-   String getFormattedRate(double rate) {
+  static Future<Rates> fetchRates() async {
+
+    try {
+      http.Response response = await http
+          .get(Uri.parse('https://stayingafloat.blog/rates.json'))
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        // If the server did return a 200 OK response,
+        // then parse the JSON.
+        return Rates.fromJson(
+            jsonDecode(response.body)['Rates'] as Map<String, dynamic>);
+
+      } else {
+        // If the server did not return a 200 OK response,
+        // then throw an exception.
+        log.shout("Didn't get a 200 OK response when loading rates");
+      }
+    } on TimeoutException catch (_) {
+
+      log.shout("Server connection time out when loading rates");
+    }
+
+    return Rates(1.30, 2.60, 0.65);
+  }
+
+  // Could be static
+  String getFormattedRate(double rate) {
     return "£${rate.toStringAsFixed(2)}";
   }
 }
