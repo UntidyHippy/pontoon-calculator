@@ -11,7 +11,9 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 
-// Need to ask for manual input if can't load rates
+// Todo test on the fetch Rates code
+// Fixed some null handling errors (21/03/2024)
+// Todo Need to ask for manual input if can't load rates
 // Now loads latest rates from the server (14/03/2024)
 // Reimplimented the 'Rates' class to be able to initiate it with json (13/03/2024)
 // Next -  be able to fees based on new information and get these from t'Internet
@@ -34,16 +36,20 @@ Map<String, dynamic> decodedRates = json.decode('{"Rates": {'
 Rates rates = Rates(1.30, 2.60, 0.65);
 
 void main() {
-  Future<Rates> futureRates = Rates.fetchRates();
-  futureRates.then((r) {
-    rates = r;
-  });
 
   // Configure logging
   Logger.root.level = Level.ALL; // defaults to Level.INFO
   Logger.root.onRecord.listen((record) {
     print('${record.level.name}: ${record.time}: ${record.message}');
   });
+
+  log.shout("Call fetchRates");
+  Rates.fetchRates().then((r) {
+    print ("Call setting rates");
+    log.shout("Call setting rates");
+    rates = r;
+  }).catchError((e) {print("Got error: $e");})
+  .whenComplete(() => log.shout("Completed fetch rates"));
 
   // Because am running the app after getting preferences, I have
   // to run this first otherwise it complains.
@@ -144,12 +150,19 @@ class Rates {
         'membersDiscountRate': membersDiscountRate
       };
 
+  // Need to test this as not necesserily behaving...
   static Future<Rates> fetchRates() async {
 
+    log.shout("Fetch rates begin");
+
     try {
+      log.shout("Fetch rates try block");
       http.Response response = await http
           .get(Uri.parse('https://stayingafloat.blog/rates.json'))
           .timeout(const Duration(seconds: 10));
+
+      log.shout("Got response");
+
 
       if (response.statusCode == 200) {
         // If the server did return a 200 OK response,
@@ -162,7 +175,7 @@ class Rates {
         // then throw an exception.
         log.shout("Didn't get a 200 OK response when loading rates");
       }
-    } on TimeoutException catch (_) {
+    } on Exception catch (_) {
 
       log.shout("Server connection time out when loading rates");
     }
@@ -431,7 +444,9 @@ class AppData {
 
   static Future<List<CalculatedStay>> _getStays() async {
     final prefs = await SharedPreferences.getInstance();
-    String staysEncoded = prefs.getString('Stays') as String;
+
+    String? staysEncoded = prefs.getString('Stays');
+    String nullSafeStaysEncoded = staysEncoded ?? '{}';
 
     log.info("What value does String have4 in _getStays? $staysEncoded");
 
@@ -440,7 +455,7 @@ class AppData {
       return <CalculatedStay>[];
     }
 */
-    Map<String, dynamic> decodedStays = json.decode(staysEncoded);
+    Map<String, dynamic> decodedStays = json.decode(nullSafeStaysEncoded);
     CalculatedStayList testStayList = CalculatedStayList.fromJson(decodedStays);
 
     // For debugging
@@ -456,7 +471,7 @@ class AppData {
       String key, String defaultValue) async {
     final prefs = await SharedPreferences.getInstance();
     String? value = prefs.getString(key);
-    value ?? defaultValue; // If value is null, set it to the default value
+    value = value ?? defaultValue; // If value is null, set it to the default value
     return value as String; // this isn't null safe
   }
 
