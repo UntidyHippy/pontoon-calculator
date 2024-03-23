@@ -1,7 +1,5 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
-
 import 'dart:io';
 
 import 'package:flutter/services.dart';
@@ -11,7 +9,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 
-// Todo test on the fetch Rates code
+// Test on the fetch Rates code - this is working (23/03/2024)
 // Fixed some null handling errors (21/03/2024)
 // Todo Need to ask for manual input if can't load rates
 // Now loads latest rates from the server (14/03/2024)
@@ -43,13 +41,10 @@ void main() {
     print('${record.level.name}: ${record.time}: ${record.message}');
   });
 
-  log.shout("Call fetchRates");
+  // Fetch the up to date rates for staying on the pontoon
   Rates.fetchRates().then((r) {
-    print ("Call setting rates");
-    log.shout("Call setting rates");
     rates = r;
-  }).catchError((e) {print("Got error: $e");})
-  .whenComplete(() => log.shout("Completed fetch rates"));
+  });
 
   // Because am running the app after getting preferences, I have
   // to run this first otherwise it complains.
@@ -58,10 +53,8 @@ void main() {
   // Because preferences are handled asynchronously, have to wait
   // until I have fetched them before running the app.
   AppData.initBoatData().whenComplete(() {
-    //AppData.showWelcomeDialog = true;
-    //AppData.boatName = null;
 
-    /* ADD SOME TEST DATA TO STAYS FOR DEBUGGING.
+    /* ADD SOME TEST DATA TO STAYS FOR TESTING.
     AppData.setStays(CalculatedStay.getCalculatedStayTestList());
 
     AppData.getStays().forEach((element) {
@@ -72,6 +65,7 @@ void main() {
 
     runApp(const MyApp());
   });
+
 }
 
 class Constants {
@@ -150,7 +144,7 @@ class Rates {
         'membersDiscountRate': membersDiscountRate
       };
 
-  // Need to test this as not necesserily behaving...
+
   static Future<Rates> fetchRates() async {
 
     log.shout("Fetch rates begin");
@@ -163,7 +157,6 @@ class Rates {
 
       log.shout("Got response");
 
-
       if (response.statusCode == 200) {
         // If the server did return a 200 OK response,
         // then parse the JSON.
@@ -173,14 +166,15 @@ class Rates {
       } else {
         // If the server did not return a 200 OK response,
         // then throw an exception.
-        log.shout("Didn't get a 200 OK response when loading rates");
+        throw Exception("Didn't get a 200 OK response when loading rates");
       }
-    } on Exception catch (_) {
+    } on Exception catch (e) {
 
-      log.shout("Server connection time out when loading rates");
+      log.shout("Exception: $e");
     }
 
-    return Rates(1.30, 2.60, 0.65);
+    // Return rates that have a 'null effect'
+    return Rates(0, 0, 0);
   }
 
   // Could be static
