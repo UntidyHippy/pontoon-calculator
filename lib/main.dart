@@ -9,6 +9,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 
+// Fixed bug so that the paid / owed flag is saved (26/03/2024)
 // Test on the fetch Rates code - this is working (23/03/2024)
 // Fixed some null handling errors (21/03/2024)
 // Todo Need to ask for manual input if can't load rates
@@ -247,7 +248,8 @@ class CalculatedStay {
       this.standardRate,
       this.visitorRate,
       this.membersDiscountRate,
-      this.boatLengthNearestHalfMeter);
+      this.boatLengthNearestHalfMeter,
+      this.paid);
 
   CalculatedStay.fromJson(Map<String, dynamic> json)
       : boatName = json['boatName'],
@@ -258,7 +260,8 @@ class CalculatedStay {
         standardRate = json['standardRate'],
         visitorRate = json['visitorRate'],
         membersDiscountRate = json['membersDiscountRate'],
-        boatLengthNearestHalfMeter = json['lengthToHalfMeter'];
+        boatLengthNearestHalfMeter = json['lengthToHalfMeter'],
+        paid = json['paid'];
 
   Map<String, dynamic> toJson() => {
         'boatName': boatName,
@@ -269,14 +272,16 @@ class CalculatedStay {
         'standardRate': standardRate,
         'visitorRate': visitorRate,
         'membersDiscountRate': membersDiscountRate,
-        'lengthToHalfMeter': boatLengthNearestHalfMeter
+        'lengthToHalfMeter': boatLengthNearestHalfMeter,
+        'paid': paid
       };
 
   void printCalculatedStay() {
     log.info(
         "${boatName.toString()} ${startStay.toString()} ${endStay.toString()} "
         "£ ${fee.toString()} "
-        "${isMember.toString()} ");
+        "${isMember.toString()} "
+            " ${paid.toString()}");
   }
 
   String getBreakdown() {
@@ -355,13 +360,13 @@ class CalculatedStay {
   static List<CalculatedStay> getCalculatedStayTestList() {
     List<CalculatedStay> list = <CalculatedStay>[];
     list.add(CalculatedStay("Dorado1", DateTime.now(), DateTime.now(), "34.54",
-        true, 1.20, 2.40, 0.6, "7.5"));
+        true, 1.20, 2.40, 0.6, "7.5", true));
     list.add(CalculatedStay("Dorado2", DateTime.now(), DateTime.now(), "34.54",
-        false, 1.20, 2.40, 0.6, "7.5"));
+        false, 1.20, 2.40, 0.6, "7.5", false));
     list.add(CalculatedStay("Dorado3", DateTime.now(), DateTime.now(), "34.54",
-        true, 1.20, 2.40, 0.6, "7.5"));
+        true, 1.20, 2.40, 0.6, "7.5", true));
     list.add(CalculatedStay("Dorado4", DateTime.now(), DateTime.now(), "34.54",
-        false, 1.20, 2.40, 0.6, "7.5"));
+        false, 1.20, 2.40, 0.6, "7.5", false));
 
     return list;
   }
@@ -1251,7 +1256,8 @@ class CalculateFeePageState extends State<CalculateFee> {
       rates.standardRate,
       rates.visitorRate,
       rates.membersDiscountRate,
-      AppData.boatLengthNearestHalfMeter);
+      AppData.boatLengthNearestHalfMeter,
+      false);
 
   String errorMsg = '';
 
