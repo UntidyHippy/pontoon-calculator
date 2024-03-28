@@ -9,12 +9,14 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 
+// Todo Need to ask for manual input if can't load rates
+
+// Simplified AppData code (28/03/2023)
 // Fixed bug so that the paid / owed flag is saved (26/03/2024)
 // Test on the fetch Rates code - this is working (23/03/2024)
 // Fixed some null handling errors (21/03/2024)
-// Todo Need to ask for manual input if can't load rates
 // Now loads latest rates from the server (14/03/2024)
-// Reimplimented the 'Rates' class to be able to initiate it with json (13/03/2024)
+// Reimplemented the 'Rates' class to be able to initiate it with json (13/03/2024)
 // Next -  be able to fees based on new information and get these from t'Internet
 // tidied how async, then and after calls are  handled (12/3/2024)
 // debug conditional print  (Fixed 8/3/2024)
@@ -32,7 +34,7 @@ Map<String, dynamic> decodedRates = json.decode('{"Rates": {'
 // Rates used to calculated fees.
 //final rates = Rates(1.30, 2.60, 0.65);
 
-Rates rates = Rates(1.30, 2.60, 0.65);
+Rates rates = Rates(1.30, 2.60, 0.65, DateTime(1970));
 
 void main() {
 
@@ -127,24 +129,203 @@ class Constants {
   }
 }
 
+/// AppData handles storing the data used in the app using
+/// the SharedPreferences module which stores it locally on
+/// the user's phone.
+///
+/// Use the setter functions to update variables so that
+/// SharedPreferences are also updated.
+///
+
+class AppData {
+  static String boatLength = "";
+  static String boatName = "";
+  static bool isMember = true;
+  static bool isInFeet = true;
+  static bool gotBoatData = false;
+  static bool showWelcomeDialog = true;
+
+  static List<CalculatedStay> stays = <CalculatedStay>[];
+  static String boatLengthNearestHalfMeter = '';
+
+
+  static Future initBoatData() async {
+
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+
+    boatLength = prefs.getString('BoatLength') ?? '';
+    boatName = prefs.getString('BoatName') ?? '';
+    isMember = prefs.getBool('IsMember') ?? false;
+    isInFeet = prefs.getBool('IsInFeet') ?? false;
+    showWelcomeDialog = prefs.getBool('ShowWelcomeDialog') ?? false;
+
+    Map<String, dynamic> decodedStays = json.decode(prefs.getString('Stays') ?? "{}");
+    stays = CalculatedStayList.fromJson(decodedStays).stays;
+
+    calculateToNearestHalfMeter();
+/*
+ List<Future> futureList = <Future>[];
+    futureList.add(initBoatLength().then((value) => boatLength = value));
+    futureList.add(initBoatName().then((value) => boatName = value));
+    futureList.add(initIsMember().then((value) => isMember = value));
+    futureList.add(initIsInFeet().then((value) => isInFeet = value));
+    futureList.add(_getStays().then((value) => stays = value));
+    futureList.add(
+        initShowWelcomeDialog().then((value) => showWelcomeDialog = value));
+
+    // this hangs around for all the items in the list to complete
+    await Future.wait(futureList).whenComplete(() => gotBoatData = true);
+*/
+
+  }
+
+  static bool getIsBoatDataComplete() {
+    log.info('TEST: boatLength: $boatLength');
+    log.info('TEST: boatName: $boatName');
+    log.info('TEST: isMember: $isMember');
+
+    if (boatLength == "") return false;
+    if (boatName == "" || boatName == '') return false;
+
+    return true;
+  }
+
+
+  /*
+  Setters
+   */
+
+  static void setStays(List<CalculatedStay> listOfStays) {
+    final prefs = SharedPreferences.getInstance();
+    stays = listOfStays;
+
+    prefs.then((value) {
+      // value is the value of the completed 'prefs'
+
+      log.info('Encoding stays');
+
+      for (var element in stays) {
+        element.printCalculatedStay();
+      }
+
+      value.setString('Stays', json.encode(CalculatedStayList(stays)));
+    }); // No error checking
+  }
+
+  static void setBoatLength(String valueToUse) {
+    final prefs = SharedPreferences.getInstance();
+    prefs.then((value) {
+      value.setString('BoatLength', valueToUse);
+    });
+
+    boatLength = valueToUse;
+  }
+
+  static void setBoatName(String valueToUse) {
+    final prefs = SharedPreferences.getInstance();
+    prefs.then((value) {
+      value.setString('BoatName', valueToUse);
+    });
+
+    boatName = valueToUse;
+  }
+
+  static void setIsMember(bool valueToUse) {
+    final prefs = SharedPreferences.getInstance();
+    prefs.then((value) {
+      value.setBool('IsMember', valueToUse);
+    });
+
+    isMember = valueToUse;
+  }
+
+  static void setIsInFeet(bool valueToUse) {
+    final prefs = SharedPreferences.getInstance();
+    prefs.then((value) {
+      value.setBool('IsInFeet', valueToUse);
+    });
+
+    isInFeet = valueToUse;
+  }
+
+  static void setShowWelcomeDialog(bool valueToUse) {
+    final prefs = SharedPreferences.getInstance();
+    prefs.then((value) {
+      value.setBool('ShowWelcomeDialog', valueToUse);
+    });
+
+    showWelcomeDialog = valueToUse;
+  }
+
+  static void calculateToNearestHalfMeter() {
+    //if (isInFeet == null) return;
+
+    // Initialise
+    //getIsInFeet();
+
+    if (boatLength == '0' || boatLength == '') {
+      boatLengthNearestHalfMeter = '0';
+      return;
+    }
+
+    double boatLengthDouble = double.parse(boatLength);
+
+    // Is the value in feet? Then convert to meters
+    if (isInFeet) {
+      boatLengthDouble = boatLengthDouble / 3.2808;
+    }
+
+    // String boatLengthString = boatLengthDouble.toString();
+    // List<String> list = boatLengthString.split("\.");
+    int wholeNumber =
+    boatLengthDouble.truncateToDouble().toInt(); //int.parse(list.first);
+
+    log.info('Boat length double: $boatLengthDouble');
+
+    log.info('Boat length whole number: $wholeNumber');
+
+    double decimalPart = boatLengthDouble - wholeNumber;
+
+    log.info('Decimal part: $decimalPart');
+
+    String rounded = '.0';
+
+    if (decimalPart >= 0.25 && decimalPart < 0.75) {
+      rounded = '.5';
+    } else if (decimalPart >= 0.75) {
+      wholeNumber += 1;
+    }
+
+    boatLengthNearestHalfMeter = '$wholeNumber$rounded';
+  }
+}
+
 class Rates {
   double standardRate;
   double visitorRate;
   double membersDiscountRate;
+  DateTime dateExpires;
 
-  Rates(this.standardRate, this.visitorRate, this.membersDiscountRate);
+  Rates(this.standardRate, this.visitorRate, this.membersDiscountRate, this.dateExpires);
 
   Rates.fromJson(Map<String, dynamic> json)
       : standardRate = double.parse(json['standardRate']),
         visitorRate = double.parse(json['visitorRate']),
-        membersDiscountRate = double.parse(json['membersDiscountRate']);
+        membersDiscountRate = double.parse(json['membersDiscountRate']),
+        dateExpires = DateTime.parse(json['dateExpires']);
+        //dateExpires = DateTime.now().add(const Duration(days: -1));
 
   Map<String, dynamic> toJson() => {
         'standardRate': standardRate,
         'visitorRate': visitorRate,
-        'membersDiscountRate': membersDiscountRate
+        'membersDiscountRate': membersDiscountRate,
+        'rateExpires': dateExpires.toString()
       };
 
+  bool ratesHaveExpired () {
+    bool value = dateExpires.difference(DateTime.now()).inDays < 0 ? true : false;
+    return value;
+  }
 
   static Future<Rates> fetchRates() async {
 
@@ -161,8 +342,11 @@ class Rates {
       if (response.statusCode == 200) {
         // If the server did return a 200 OK response,
         // then parse the JSON.
-        return Rates.fromJson(
+        Rates rates = Rates.fromJson(
             jsonDecode(response.body)['Rates'] as Map<String, dynamic>);
+
+         rates.ratesHaveExpired ();
+         return rates;
 
       } else {
         // If the server did not return a 200 OK response,
@@ -175,7 +359,7 @@ class Rates {
     }
 
     // Return rates that have a 'null effect'
-    return Rates(0, 0, 0);
+    return Rates(0, 0, 0, DateTime(1970));
   }
 
   // Could be static
@@ -184,12 +368,11 @@ class Rates {
   }
 }
 
-/*
- Wrapper class for list of Calculated stays to be able to
- serialise this list into JSON so that it can be stored in
- preferences.
 
- */
+// Wrapper class for list of Calculated stays to be able to
+// serialise this list into JSON so that it can be stored in
+// preferences.
+
 class CalculatedStayList {
   final List<CalculatedStay> stays;
 
@@ -319,7 +502,7 @@ class CalculatedStay {
     daysAtMembersDiscountRate = 0;
 
     double boatLength = double.parse(AppData.boatLengthNearestHalfMeter);
-    bool isMember = AppData.getIsMember();
+    //bool isMember = AppData.getIsMember();
 
     //if (errorMsg != '') return;
 
@@ -372,243 +555,7 @@ class CalculatedStay {
   }
 }
 
-class AppData {
-  static String boatLength = "";
-  static String boatName = "";
-  static bool isMember = true;
-  static bool isInFeet = true;
-  static bool gotBoatData = false;
-  static bool showWelcomeDialog = true;
 
-  static List<CalculatedStay> stays = <CalculatedStay>[];
-
-  static String boatLengthNearestHalfMeter = '';
-
-  static Future initBoatData() async {
-    List<Future> futureList = <Future>[];
-
-    futureList.add(initBoatLength().then((value) => boatLength = value));
-    futureList.add(initBoatName().then((value) => boatName = value));
-    futureList.add(initIsMember().then((value) => isMember = value));
-    futureList.add(initIsInFeet().then((value) => isInFeet = value));
-    futureList.add(_getStays().then((value) => stays = value));
-    futureList.add(
-        initShowWelcomeDialog().then((value) => showWelcomeDialog = value));
-
-    // this hangs around for all the items in the list to complete
-    await Future.wait(futureList).whenComplete(() => gotBoatData = true);
-  }
-
-  static bool getIsBoatDataComplete() {
-    log.info('TEST: boatLength: $boatLength');
-    log.info('TEST: boatName: $boatName');
-    log.info('TEST: isMember: $isMember');
-
-    if (boatLength == "") return false;
-    if (boatName == "" || boatName == '') return false;
-
-    return true;
-  }
-
-  static List<CalculatedStay> getStays() {
-    //if (stays == null) stays = <CalculatedStay>[];
-    return stays;
-  }
-
-  static String getBoatLength() {
-    //if (boatLength == null) boatLength = '';
-    return boatLength;
-  }
-
-  static String getBoatName() {
-    //if (boatName == null) boatName = '';
-    return boatName;
-  }
-
-  static bool getIsInFeet() {
-    //if (isInFeet == null) isInFeet = true;
-    return isInFeet;
-  }
-
-  static bool getIsMember() {
-    //log.info('Stack trace: \n' + StackTrace.current.toString());
-    //if (isMember == null) isMember = false;
-    return isMember;
-  }
-
-  static bool getShowWelcomeDialog() {
-    //if (showWelcomeDialog == null) showWelcomeDialog = true;
-    return showWelcomeDialog;
-  }
-
-  static Future<List<CalculatedStay>> _getStays() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    String? staysEncoded = prefs.getString('Stays');
-    String nullSafeStaysEncoded = staysEncoded ?? '{}';
-
-    log.info("What value does String have4 in _getStays? $staysEncoded");
-
-    // First time run the app there will be nothing here
-    /* if (staysEncoded == null) {
-      return <CalculatedStay>[];
-    }
-*/
-    Map<String, dynamic> decodedStays = json.decode(nullSafeStaysEncoded);
-    CalculatedStayList testStayList = CalculatedStayList.fromJson(decodedStays);
-
-    // For debugging
-    log.info('Test doing it by calculated stay');
-    for (var element in testStayList.stays) {
-      element.printCalculatedStay();
-    }
-
-    return testStayList.stays;
-  }
-
-  static Future<String> nullSafeGetStringPref(
-      String key, String defaultValue) async {
-    final prefs = await SharedPreferences.getInstance();
-    String? value = prefs.getString(key);
-    value = value ?? defaultValue; // If value is null, set it to the default value
-    return value as String; // this isn't null safe
-  }
-
-  static Future<bool> nullSafeGetBoolPref(String key, bool defaultValue) async {
-    final prefs = await SharedPreferences.getInstance();
-    bool? value = prefs.getBool(key);
-    value ??= defaultValue; // If value is null, set it to the default value
-    return value;
-  }
-
-  static Future<String> initBoatLength() async {
-    return nullSafeGetStringPref('BoatLength', '');
-  }
-
-  static Future<bool> initIsInFeet() async {
-    return nullSafeGetBoolPref('IsInFeet', true);
-  }
-
-  static Future<String> initBoatName() async {
-    return nullSafeGetStringPref('BoatName', '');
-  }
-
-  static Future<bool> initIsMember() async {
-    return nullSafeGetBoolPref('IsMember', false);
-  }
-
-  static Future<bool> initShowWelcomeDialog() async {
-    return nullSafeGetBoolPref('ShowWelcomeDialog', true);
-  }
-
-  /*
-  Setters
-   */
-
-  static void setStays(List<CalculatedStay> listOfStays) {
-    final prefs = SharedPreferences.getInstance();
-    stays = listOfStays;
-
-    prefs.then((value) {
-      // value is the value of the completed 'prefs'
-
-      log.info('Encoding stays');
-
-      for (var element in stays) {
-        element.printCalculatedStay();
-      }
-
-      value.setString('Stays', json.encode(CalculatedStayList(stays)));
-    }); // No error checking
-  }
-
-  static void setBoatLength(String valueToUse) {
-    final prefs = SharedPreferences.getInstance();
-    prefs.then((value) {
-      value.setString('BoatLength', valueToUse);
-    });
-
-    boatLength = valueToUse;
-  }
-
-  static void setBoatName(String valueToUse) {
-    final prefs = SharedPreferences.getInstance();
-    prefs.then((value) {
-      value.setString('BoatName', valueToUse);
-    });
-
-    boatName = valueToUse;
-  }
-
-  static void setIsMember(bool valueToUse) {
-    final prefs = SharedPreferences.getInstance();
-    prefs.then((value) {
-      value.setBool('IsMember', valueToUse);
-    });
-
-    isMember = valueToUse;
-  }
-
-  static void setIsInFeet(bool valueToUse) {
-    final prefs = SharedPreferences.getInstance();
-    prefs.then((value) {
-      value.setBool('IsInFeet', valueToUse);
-    });
-
-    isInFeet = valueToUse;
-  }
-
-  static void setShowWelcomeDialog(bool valueToUse) {
-    final prefs = SharedPreferences.getInstance();
-    prefs.then((value) {
-      value.setBool('ShowWelcomeDialog', valueToUse);
-    });
-
-    showWelcomeDialog = valueToUse;
-  }
-
-  static void calculateToNearestHalfMeter() {
-    //if (isInFeet == null) return;
-
-    // Initialise
-    getIsInFeet();
-
-    if (boatLength == '0' || boatLength == '') {
-      boatLengthNearestHalfMeter = '0';
-      return;
-    }
-
-    double boatLengthDouble = double.parse(AppData.getBoatLength());
-
-    // Is the value in feet? Then convert to meters
-    if (isInFeet) {
-      boatLengthDouble = boatLengthDouble / 3.2808;
-    }
-
-    // String boatLengthString = boatLengthDouble.toString();
-    // List<String> list = boatLengthString.split("\.");
-    int wholeNumber =
-        boatLengthDouble.truncateToDouble().toInt(); //int.parse(list.first);
-
-    log.info('Boat length double: $boatLengthDouble');
-
-    log.info('Boat length whole number: $wholeNumber');
-
-    double decimalPart = boatLengthDouble - wholeNumber;
-
-    log.info('Decimal part: $decimalPart');
-
-    String rounded = '.0';
-
-    if (decimalPart >= 0.25 && decimalPart < 0.75) {
-      rounded = '.5';
-    } else if (decimalPart >= 0.75) {
-      wholeNumber += 1;
-    }
-
-    boatLengthNearestHalfMeter = '$wholeNumber$rounded';
-  }
-}
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -675,16 +622,16 @@ class HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
 
-    boatLengthTextEditingController.text = AppData.getBoatLength().toString();
-    boatNameTextEditingController.text = AppData.getBoatName();
+    boatLengthTextEditingController.text = AppData.boatLength.toString();
+    boatNameTextEditingController.text = AppData.boatName;
 
-    if (AppData.getIsMember() == true) {
+    if (AppData.isMember == true) {
       memberOrVisitorRadioValue = 0;
     } else {
       memberOrVisitorRadioValue = 1;
     }
 
-    if (AppData.getIsInFeet() == true) {
+    if (AppData.isInFeet == true) {
       feetOrMetersRadioValue = 0;
     } else {
       feetOrMetersRadioValue = 1;
@@ -695,12 +642,12 @@ class HomePageState extends State<HomePage> {
     if (AppData.getIsBoatDataComplete() == false) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _showSetupDialog().then((_) {
-          if (AppData.getShowWelcomeDialog()) {
+          if (AppData.showWelcomeDialog) {
             showWelcomeDialogue();
           }
         });
       });
-    } else if (AppData.getShowWelcomeDialog()) {
+    } else if (AppData.showWelcomeDialog) {
       WidgetsBinding.instance
           .addPostFrameCallback((_) => showWelcomeDialogue());
     }
@@ -848,7 +795,7 @@ class HomePageState extends State<HomePage> {
                   Text(welcomeText, style: Constants.welcomeTextStyle),
                   CheckboxListTile(
                       title: const Text('Do not show this message again'),
-                      value: !AppData.getShowWelcomeDialog(),
+                      value: !AppData.showWelcomeDialog,
                       onChanged: (bool? value) {
                         setState(() {
                           AppData.setShowWelcomeDialog(
@@ -1035,7 +982,7 @@ class HomePageState extends State<HomePage> {
 
     //log.info('List Builder ' + AppData.getStays().length.toString());
 
-    AppData.getStays().map((calculatedStay) {
+    AppData.stays.map((calculatedStay) {
       log.info('Adding ListTile ${calculatedStay.fee}');
       listTiles.add(Container(
           decoration: calculatedStay.paid
@@ -1248,11 +1195,11 @@ class CalculateFee extends StatefulWidget {
 
 class CalculateFeePageState extends State<CalculateFee> {
   CalculatedStay calculatedStay = CalculatedStay(
-      AppData.getBoatName(),
+      AppData.boatName,
       DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day),
       DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day),
       '',
-      AppData.getIsMember(),
+      AppData.isMember,
       rates.standardRate,
       rates.visitorRate,
       rates.membersDiscountRate,
@@ -1321,7 +1268,7 @@ class CalculateFeePageState extends State<CalculateFee> {
 
   Widget getSetDateTable(BuildContext context) {
     return Table(children: [
-      getRateTableRow("Boat", AppData.getBoatName()),
+      getRateTableRow("Boat", AppData.boatName),
       getRateTableRow("Length", '${AppData.boatLengthNearestHalfMeter}M'),
       TableRow(children: [
         TableCell(
