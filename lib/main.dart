@@ -1,16 +1,18 @@
 import 'dart:async';
+import 'dart:ffi';
 import 'package:flutter/material.dart';
 import 'dart:io';
-
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math' as math;
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
+import 'package:currency_textfield/currency_textfield.dart';
 
 // Todo Need to ask for manual input if can't load rates
 
+// Sequence for checking rates based on expiry date (28/04/2024)
 // Simplified AppData code (28/03/2023)
 // Fixed bug so that the paid / owed flag is saved (26/03/2024)
 // Test on the fetch Rates code - this is working (23/03/2024)
@@ -26,28 +28,35 @@ import 'package:logging/logging.dart';
 // Logger used by this app
 final log = Logger('PontoonFeesApp');
 
-Map<String, dynamic> decodedRates = json.decode('{"Rates": {'
-    '"standardRate" : "0.05",'
-    '"visitorRate" : "0.15",'
-    '"membersDiscountRate" : "1.50" }}');
+Map<String, dynamic> recodedRates = json.decode('{"Rates": {'
+    '"standardRate" : 1.50,'
+    '"visitorRate" : 3.00,'
+    '"membersDiscountRate" : 0.75,'
+    '"dateExpires" : "2024-10-11 23:59:59.00"}}');
 
 // Rates used to calculated fees.
 //final rates = Rates(1.30, 2.60, 0.65);
 
-Rates rates = Rates(1.30, 2.60, 0.65, DateTime(1970));
+//Rates rates = Rates.fromJson(decodedRates['Rates']);
 
 void main() {
-
   // Configure logging
   Logger.root.level = Level.ALL; // defaults to Level.INFO
   Logger.root.onRecord.listen((record) {
     print('${record.level.name}: ${record.time}: ${record.message}');
   });
 
-  // Fetch the up to date rates for staying on the pontoon
+  /* Fetch the up to date rates for staying on the pontoon
   Rates.fetchRates().then((r) {
     rates = r;
+    log.shout("Formatted date ${rates.dateExpires.toString()}");
   });
+  */
+
+  log.shout(
+      "This is the date we are trying to decode ${recodedRates['Rates']['dateExpires']}");
+
+  log.shout("Formatted date ${AppData.rates.dateExpires.toString()}");
 
   // Because am running the app after getting preferences, I have
   // to run this first otherwise it complains.
@@ -56,7 +65,6 @@ void main() {
   // Because preferences are handled asynchronously, have to wait
   // until I have fetched them before running the app.
   AppData.initBoatData().whenComplete(() {
-
     /* ADD SOME TEST DATA TO STAYS FOR TESTING.
     AppData.setStays(CalculatedStay.getCalculatedStayTestList());
 
@@ -68,7 +76,6 @@ void main() {
 
     runApp(const MyApp());
   });
-
 }
 
 class Constants {
@@ -148,9 +155,9 @@ class AppData {
   static List<CalculatedStay> stays = <CalculatedStay>[];
   static String boatLengthNearestHalfMeter = '';
 
+  static Rates rates = Rates(0, 0, 0, DateTime.now());
 
   static Future initBoatData() async {
-
     SharedPreferences prefs = await SharedPreferences.getInstance();
 
     boatLength = prefs.getString('BoatLength') ?? '';
@@ -159,24 +166,54 @@ class AppData {
     isInFeet = prefs.getBool('IsInFeet') ?? false;
     showWelcomeDialog = prefs.getBool('ShowWelcomeDialog') ?? false;
 
-    Map<String, dynamic> decodedStays = json.decode(prefs.getString('Stays') ?? "{}");
+    Map<String, dynamic> decodedStays =
+        json.decode(prefs.getString('Stays') ?? "{}");
     stays = CalculatedStayList.fromJson(decodedStays).stays;
 
     calculateToNearestHalfMeter();
-/*
- List<Future> futureList = <Future>[];
-    futureList.add(initBoatLength().then((value) => boatLength = value));
-    futureList.add(initBoatName().then((value) => boatName = value));
-    futureList.add(initIsMember().then((value) => isMember = value));
-    futureList.add(initIsInFeet().then((value) => isInFeet = value));
-    futureList.add(_getStays().then((value) => stays = value));
-    futureList.add(
-        initShowWelcomeDialog().then((value) => showWelcomeDialog = value));
 
-    // this hangs around for all the items in the list to complete
-    await Future.wait(futureList).whenComplete(() => gotBoatData = true);
-*/
+    // Load the current rates for pontoon use
+    Map<String, dynamic> ratesMap =
+        json.decode(prefs.getString('Rates') ?? "{}");
 
+    // If we didn't manage to load rates as part of app data then
+    // take the hard-coded version
+    if (ratesMap.isEmpty) {
+      rates = Rates.fromJson(recodedRates['Rates']);
+      prefs.setString('Rates', jsonEncode(rates));
+
+      rates.whereHaveRatesComeFrom = "Hardcoded rates";
+
+    } else {
+
+      rates = Rates.fromJson(ratesMap);
+      rates.whereHaveRatesComeFrom = "Rates save on device";
+    }
+
+    // Are the rates current?
+    log.shout("Rates have expired? ${rates.ratesHaveExpired()}");
+    log.shout("Rates are from: ${rates.whereHaveRatesComeFrom}");
+
+    // If the rates have expired, try getting some fresh rates from
+    // the internet.
+    if (rates.ratesHaveExpired() == true) {
+      Rates.fetchRates().then((r) {
+        // Make sure that the rates that we fetch have not
+        // expired as well.
+        if (r.ratesHaveExpired() == false) {
+          rates = r;
+
+          rates.whereHaveRatesComeFrom = "Rates updated from internet";
+          log.shout("Rates are from 3 ${rates.whereHaveRatesComeFrom}");
+        }
+      });
+    }
+
+    // We may end up here with rates that are out of date
+    // in which case the application should let the user know
+    // and ask for some fresh ones.
+
+    log.shout("Rates are from 2 ${rates.whereHaveRatesComeFrom}");
   }
 
   static bool getIsBoatDataComplete() {
@@ -189,7 +226,6 @@ class AppData {
 
     return true;
   }
-
 
   /*
   Setters
@@ -278,7 +314,7 @@ class AppData {
     // String boatLengthString = boatLengthDouble.toString();
     // List<String> list = boatLengthString.split("\.");
     int wholeNumber =
-    boatLengthDouble.truncateToDouble().toInt(); //int.parse(list.first);
+        boatLengthDouble.truncateToDouble().toInt(); //int.parse(list.first);
 
     log.info('Boat length double: $boatLengthDouble');
 
@@ -305,30 +341,31 @@ class Rates {
   double visitorRate;
   double membersDiscountRate;
   DateTime dateExpires;
+  String whereHaveRatesComeFrom = ''; // Mainly for debugging / testing
 
-  Rates(this.standardRate, this.visitorRate, this.membersDiscountRate, this.dateExpires);
+  Rates(this.standardRate, this.visitorRate, this.membersDiscountRate,
+      this.dateExpires);
 
   Rates.fromJson(Map<String, dynamic> json)
-      : standardRate = double.parse(json['standardRate']),
-        visitorRate = double.parse(json['visitorRate']),
-        membersDiscountRate = double.parse(json['membersDiscountRate']),
+      : standardRate = json['standardRate'],
+        visitorRate = json['visitorRate'],
+        membersDiscountRate = json['membersDiscountRate'],
         dateExpires = DateTime.parse(json['dateExpires']);
-        //dateExpires = DateTime.now().add(const Duration(days: -1));
 
   Map<String, dynamic> toJson() => {
         'standardRate': standardRate,
         'visitorRate': visitorRate,
         'membersDiscountRate': membersDiscountRate,
-        'rateExpires': dateExpires.toString()
+        'dateExpires': dateExpires.toString()
       };
 
-  bool ratesHaveExpired () {
-    bool value = dateExpires.difference(DateTime.now()).inDays < 0 ? true : false;
+  bool ratesHaveExpired() {
+    bool value =
+        dateExpires.difference(DateTime.now()).inDays < 0 ? true : false;
     return value;
   }
 
   static Future<Rates> fetchRates() async {
-
     log.shout("Fetch rates begin");
 
     try {
@@ -345,16 +382,14 @@ class Rates {
         Rates rates = Rates.fromJson(
             jsonDecode(response.body)['Rates'] as Map<String, dynamic>);
 
-         rates.ratesHaveExpired ();
-         return rates;
-
+        rates.ratesHaveExpired();
+        return rates;
       } else {
         // If the server did not return a 200 OK response,
         // then throw an exception.
         throw Exception("Didn't get a 200 OK response when loading rates");
       }
     } on Exception catch (e) {
-
       log.shout("Exception: $e");
     }
 
@@ -368,10 +403,9 @@ class Rates {
   }
 }
 
-
-// Wrapper class for list of Calculated stays to be able to
-// serialise this list into JSON so that it can be stored in
-// preferences.
+/// Wrapper class for list of Calculated stays to be able to
+/// serialise this list into JSON so that it can be stored in
+/// preferences.
 
 class CalculatedStayList {
   final List<CalculatedStay> stays;
@@ -464,21 +498,21 @@ class CalculatedStay {
         "${boatName.toString()} ${startStay.toString()} ${endStay.toString()} "
         "£ ${fee.toString()} "
         "${isMember.toString()} "
-            " ${paid.toString()}");
+        " ${paid.toString()}");
   }
 
   String getBreakdown() {
     String visitorRateText = "${daysAtVisitorRate.toString()}"
         " day(s) at "
-        "${rates.getFormattedRate(visitorRate)}"
+        "${AppData.rates.getFormattedRate(visitorRate)}"
         '/M ';
     String standardRateText = "${daysAtStandardRate.toString()}"
         " day(s) at "
-        "${rates.getFormattedRate(standardRate)}"
+        "${AppData.rates.getFormattedRate(standardRate)}"
         "/M ";
     String discountRateText = "${daysAtMembersDiscountRate.toString()}"
         " day(s) at "
-        "${rates.getFormattedRate(membersDiscountRate)}"
+        "${AppData.rates.getFormattedRate(membersDiscountRate)}"
         "/M";
 
     log.info(
@@ -521,23 +555,23 @@ class CalculatedStay {
         endStay.difference(d).inDays > 0;
         d = d.add(day)) {
       if (isMember == false) {
-        pontoonCharge += rates.visitorRate * boatLength;
+        pontoonCharge += AppData.rates.visitorRate * boatLength;
         daysAtVisitorRate++;
         continue;
       }
 
       if (d.weekday == DateTime.friday || d.weekday == DateTime.saturday) {
-        pontoonCharge += rates.standardRate * boatLength;
+        pontoonCharge += AppData.rates.standardRate * boatLength;
         daysAtStandardRate++;
         log.info("Discount day");
       } else {
-        pontoonCharge += rates.membersDiscountRate * boatLength;
+        pontoonCharge += AppData.rates.membersDiscountRate * boatLength;
         daysAtMembersDiscountRate++;
         log.info("Non Discount day");
       }
     }
 
-    fee = rates.getFormattedRate(pontoonCharge);
+    fee = AppData.rates.getFormattedRate(pontoonCharge);
   }
 
   static List<CalculatedStay> getCalculatedStayTestList() {
@@ -554,8 +588,6 @@ class CalculatedStay {
     return list;
   }
 }
-
-
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -608,7 +640,20 @@ class HomePage extends StatefulWidget {
 class HomePageState extends State<HomePage> {
   TextEditingController boatLengthTextEditingController =
       TextEditingController();
+
   TextEditingController boatNameTextEditingController = TextEditingController();
+
+  CurrencyTextFieldController visitorsRateCurrencyEditingController =
+      CurrencyTextFieldController(
+          currencySymbol: "£", decimalSymbol: ".", thousandSymbol: ",");
+
+  CurrencyTextFieldController membersRateCurrencyEditingController =
+      CurrencyTextFieldController(
+          currencySymbol: "£", decimalSymbol: ".", thousandSymbol: ",");
+
+  CurrencyTextFieldController membersDiscountRateCurrencyEditingController =
+      CurrencyTextFieldController(
+          currencySymbol: "£", decimalSymbol: ".", thousandSymbol: ",");
 
   int memberOrVisitorRadioValue = -1;
   int feetOrMetersRadioValue = -1;
@@ -624,6 +669,13 @@ class HomePageState extends State<HomePage> {
 
     boatLengthTextEditingController.text = AppData.boatLength.toString();
     boatNameTextEditingController.text = AppData.boatName;
+
+    visitorsRateCurrencyEditingController.text =
+        AppData.rates.visitorRate.toString();
+    membersRateCurrencyEditingController.text =
+        AppData.rates.standardRate.toString();
+    membersDiscountRateCurrencyEditingController.text =
+        AppData.rates.membersDiscountRate.toString();
 
     if (AppData.isMember == true) {
       memberOrVisitorRadioValue = 0;
@@ -663,6 +715,9 @@ class HomePageState extends State<HomePage> {
         break;
       case 'How to pay':
         showHowToPayDialogue();
+        break;
+      case "Update rates":
+        showUpdateRatesDialog();
         break;
     }
   }
@@ -760,10 +815,10 @@ class HomePageState extends State<HomePage> {
 
   Future<dynamic> showRatesDialogue() async {
     String ratesText = 'Visitor Rates:\n'
-        '${rates.getFormattedRate(rates.visitorRate)}/M per night\n\n'
+        '${AppData.rates.getFormattedRate(AppData.rates.visitorRate)}/M per night\n\n'
         'Members\' Rates:\nSunday to Thursday night\n'
-        '${rates.getFormattedRate(rates.standardRate)}/M per night\n\nFriday and Saturday night\n'
-        '${rates.getFormattedRate(rates.membersDiscountRate)}/M per night\n';
+        '${AppData.rates.getFormattedRate(AppData.rates.standardRate)}/M per night\n\nFriday and Saturday night\n'
+        '${AppData.rates.getFormattedRate(AppData.rates.membersDiscountRate)}/M per night\n';
 
     return showMessageDialogue('Rates', ratesText);
   }
@@ -856,8 +911,12 @@ class HomePageState extends State<HomePage> {
           PopupMenuButton<String>(
             onSelected: handleClick,
             itemBuilder: (BuildContext context) {
-              return {'Your details', 'Show rates', 'How to pay'}
-                  .map((String choice) {
+              return {
+                'Your details',
+                'Show rates',
+                'How to pay',
+                'Update rates'
+              }.map((String choice) {
                 return PopupMenuItem<String>(
                   value: choice,
                   child: Text(choice),
@@ -1173,6 +1232,97 @@ class HomePageState extends State<HomePage> {
           });
         });
   }
+
+  /// Get updated rates for birthing on the pontoon
+  Future showUpdateRatesDialog() {
+    return showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return StatefulBuilder(builder: (context, setState) {
+            return AlertDialog(
+                title: const Text("Update birthing rates"),
+                content: SingleChildScrollView(
+                    // Center is a layout widget. It takes a single child and positions it
+                    // in the middle of the parent.
+                    child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: <Widget>[
+                      TextField(
+                        decoration: const InputDecoration(
+                            labelText: "Visitor's rate (per night)",
+                            labelStyle: Constants.textLabelStyle),
+                        keyboardType: TextInputType.number,
+                        controller: visitorsRateCurrencyEditingController,
+                        onChanged: (text) {
+                          setState(() {
+                            AppData.rates.visitorRate =
+                                visitorsRateCurrencyEditingController
+                                    .doubleValue;
+                          });
+                        },
+                        //inputFormatters: <TextInputFormatter>[
+                        //   DecimalTextInputFormatter (decimalRange: 2)
+                        //]
+                      ),
+                      TextField(
+                        decoration: const InputDecoration(
+                            labelText: "Member's rate (per night)",
+                            labelStyle: Constants.textLabelStyle),
+                        keyboardType: TextInputType.number,
+                        controller: membersRateCurrencyEditingController,
+                        onChanged: (text) {
+                          setState(() {
+                            AppData.rates.standardRate =
+                                membersRateCurrencyEditingController
+                                    .doubleValue;
+                          });
+                        },
+                        //inputFormatters: <TextInputFormatter>[
+                        //   DecimalTextInputFormatter (decimalRange: 2)
+                        //]
+                      ),
+                      TextField(
+                        decoration: const InputDecoration(
+                            labelText: "Member's discount rate (per night)",
+                            labelStyle: Constants.textLabelStyle),
+                        keyboardType: TextInputType.number,
+                        controller:
+                            membersDiscountRateCurrencyEditingController,
+                        onChanged: (text) {
+                          setState(() {
+                            AppData.rates.membersDiscountRate =
+                                membersDiscountRateCurrencyEditingController
+                                    .doubleValue;
+                          });
+                        },
+                        //inputFormatters: <TextInputFormatter>[
+                        //   DecimalTextInputFormatter (decimalRange: 2)
+                        //]
+                      ),
+                      /*
+                          TODO Include expiry date
+                          ElevatedButton(
+                            onPressed: () => _selectEndDate(context), // Refer step 3
+                            child: Text(
+                              Constants.formatDate(calculatedStay.endStay),
+                              style: const TextStyle(
+                                  color: Colors.black, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          */
+                      ElevatedButton(
+                        onPressed: AppData.getIsBoatDataComplete()
+                            ? () {
+                                Navigator.pop(context);
+                              }
+                            : null,
+                        child: const Text(
+                            'Done'), // If null then button deactivated
+                      ),
+                    ])));
+          });
+        });
+  }
 }
 
 class CalculateFee extends StatefulWidget {
@@ -1200,9 +1350,9 @@ class CalculateFeePageState extends State<CalculateFee> {
       DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day),
       '',
       AppData.isMember,
-      rates.standardRate,
-      rates.visitorRate,
-      rates.membersDiscountRate,
+      AppData.rates.standardRate,
+      AppData.rates.visitorRate,
+      AppData.rates.membersDiscountRate,
       AppData.boatLengthNearestHalfMeter,
       false);
 
@@ -1247,21 +1397,21 @@ class CalculateFeePageState extends State<CalculateFee> {
 
   Widget _getRates() {
     String text =
-        'Sun to Thu £${rates.membersDiscountRate}Overnight rate for members\n Fri to Sat £${rates.standardRate}\n';
+        'Sun to Thu £${AppData.rates.membersDiscountRate}Overnight rate for members\n Fri to Sat £${AppData.rates.standardRate}\n';
 
     if (AppData.isMember == false) {
       return Text(
-          'Overnight rate for visitors: £${rates.visitorRate} per meter');
+          'Overnight rate for visitors: £${AppData.rates.visitorRate} per meter');
     }
 
     return Table(children: [
       TableRow(children: [
         const TableCell(child: Text('Fri to Sat ')),
-        TableCell(child: Text('£${rates.standardRate}')),
+        TableCell(child: Text('£${AppData.rates.standardRate}')),
       ]),
       TableRow(children: [
         const TableCell(child: Text('Sun to Thu ')),
-        TableCell(child: Text('£${rates.membersDiscountRate}')),
+        TableCell(child: Text('£${AppData.rates.membersDiscountRate}')),
       ]),
     ]);
   }
@@ -1326,18 +1476,18 @@ class CalculateFeePageState extends State<CalculateFee> {
       ]),
       if (calculatedStay.daysAtVisitorRate != 0)
         getRateTableRow(
-            'Days at ${rates.getFormattedRate(rates.visitorRate)}/M',
+            'Days at ${AppData.rates.getFormattedRate(AppData.rates.visitorRate)}/M',
             calculatedStay.daysAtVisitorRate.toString()),
       if (calculatedStay.daysAtStandardRate != 0)
         getRateTableRow(
-            'Days at ${rates.getFormattedRate(rates.standardRate)}/M',
+            'Days at ${AppData.rates.getFormattedRate(AppData.rates.standardRate)}/M',
             calculatedStay.daysAtStandardRate.toString()),
       if (calculatedStay.daysAtMembersDiscountRate != 0)
         getRateTableRow(
-            'Days at ${rates.getFormattedRate(rates.membersDiscountRate)}/M',
+            'Days at ${AppData.rates.getFormattedRate(AppData.rates.membersDiscountRate)}/M',
             calculatedStay.daysAtMembersDiscountRate.toString()),
       getRateTableRow(
-          "Fee", rates.getFormattedRate(calculatedStay.pontoonCharge)),
+          "Fee", AppData.rates.getFormattedRate(calculatedStay.pontoonCharge)),
     ]);
   }
 
