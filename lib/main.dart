@@ -10,8 +10,9 @@ import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 import 'package:currency_textfield/currency_textfield.dart';
 
-// Todo Need to ask for manual input if can't load rates
+// Todo - tidy up the input rates dialogue.
 
+// Prompted to update rates when rates have expired (29/04/2024)
 // Sequence for checking rates based on expiry date (28/04/2024)
 // Simplified AppData code (28/03/2023)
 // Fixed bug so that the paid / owed flag is saved (26/03/2024)
@@ -32,7 +33,7 @@ Map<String, dynamic> recodedRates = json.decode('{"Rates": {'
     '"standardRate" : 1.50,'
     '"visitorRate" : 3.00,'
     '"membersDiscountRate" : 0.75,'
-    '"dateExpires" : "2024-10-11 23:59:59.00"}}');
+    '"dateExpires" : "2022-10-11 23:59:59.00"}}');
 
 // Rates used to calculated fees.
 //final rates = Rates(1.30, 2.60, 0.65);
@@ -45,18 +46,6 @@ void main() {
   Logger.root.onRecord.listen((record) {
     print('${record.level.name}: ${record.time}: ${record.message}');
   });
-
-  /* Fetch the up to date rates for staying on the pontoon
-  Rates.fetchRates().then((r) {
-    rates = r;
-    log.shout("Formatted date ${rates.dateExpires.toString()}");
-  });
-  */
-
-  log.shout(
-      "This is the date we are trying to decode ${recodedRates['Rates']['dateExpires']}");
-
-  log.shout("Formatted date ${AppData.rates.dateExpires.toString()}");
 
   // Because am running the app after getting preferences, I have
   // to run this first otherwise it complains.
@@ -164,7 +153,7 @@ class AppData {
     boatName = prefs.getString('BoatName') ?? '';
     isMember = prefs.getBool('IsMember') ?? false;
     isInFeet = prefs.getBool('IsInFeet') ?? false;
-    showWelcomeDialog = prefs.getBool('ShowWelcomeDialog') ?? false;
+    showWelcomeDialog = prefs.getBool('ShowWelcomeDialog') ?? true;
 
     Map<String, dynamic> decodedStays =
         json.decode(prefs.getString('Stays') ?? "{}");
@@ -183,9 +172,7 @@ class AppData {
       prefs.setString('Rates', jsonEncode(rates));
 
       rates.whereHaveRatesComeFrom = "Hardcoded rates";
-
     } else {
-
       rates = Rates.fromJson(ratesMap);
       rates.whereHaveRatesComeFrom = "Rates save on device";
     }
@@ -337,6 +324,10 @@ class AppData {
 }
 
 class Rates {
+  static const String expiryNotice =
+      "Rates are passed their expiry date. Please update "
+      "rates and enter a new expiry date";
+
   double standardRate;
   double visitorRate;
   double membersDiscountRate;
@@ -658,6 +649,8 @@ class HomePageState extends State<HomePage> {
   int memberOrVisitorRadioValue = -1;
   int feetOrMetersRadioValue = -1;
 
+  String expiryNotice = "blah blah";
+
   pushToScreen(BuildContext context) {
     Navigator.of(context)
         .push(MaterialPageRoute(builder: (_) => const CalculateFee()));
@@ -691,18 +684,40 @@ class HomePageState extends State<HomePage> {
 
     AppData.calculateToNearestHalfMeter();
 
+    /*
     if (AppData.getIsBoatDataComplete() == false) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _showSetupDialog().then((_) {
           if (AppData.showWelcomeDialog) {
             showWelcomeDialogue();
           }
+          if (AppData.rates.ratesHaveExpired() == true) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              showUpdateRatesDialog();
+            });
+          }
         });
       });
-    } else if (AppData.showWelcomeDialog) {
-      WidgetsBinding.instance
-          .addPostFrameCallback((_) => showWelcomeDialogue());
     }
+     */
+
+    log.shout("Show welcome dialog: ${AppData.showWelcomeDialog}");
+    log.shout("Is boat data complete: ${AppData.getIsBoatDataComplete()}");
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (AppData.rates.ratesHaveExpired() == true) {
+        expiryNotice = Rates.expiryNotice;
+        showUpdateRatesDialog();
+      }
+
+      if (AppData.getIsBoatDataComplete() == false) {
+        _showSetupDialog();
+      }
+
+      if (AppData.showWelcomeDialog) {
+        showWelcomeDialogue();
+      }
+    });
   }
 
   void handleClick(String value) {
@@ -717,6 +732,11 @@ class HomePageState extends State<HomePage> {
         showHowToPayDialogue();
         break;
       case "Update rates":
+        if (AppData.rates.ratesHaveExpired() == true) {
+          expiryNotice = Rates.expiryNotice;
+        } else {
+          expiryNotice = "";
+        }
         showUpdateRatesDialog();
         break;
     }
@@ -972,6 +992,7 @@ class HomePageState extends State<HomePage> {
           onPressed: (() => Navigator.pushNamed(context, '/second')
               .whenComplete(
                   () => setState(() => log.info('Setting state Done')))),
+          //Todo - make the add button bolder
           child: const Icon(Icons.add, color: Colors.white)),
     );
   }
@@ -1240,13 +1261,14 @@ class HomePageState extends State<HomePage> {
         builder: (BuildContext context) {
           return StatefulBuilder(builder: (context, setState) {
             return AlertDialog(
-                title: const Text("Update birthing rates"),
+                title: const Text("Birthing rates"),
                 content: SingleChildScrollView(
                     // Center is a layout widget. It takes a single child and positions it
                     // in the middle of the parent.
                     child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: <Widget>[
+                      Text(expiryNotice, style: Constants.questionsStyle),
                       TextField(
                         decoration: const InputDecoration(
                             labelText: "Visitor's rate (per night)",
@@ -1283,6 +1305,7 @@ class HomePageState extends State<HomePage> {
                       ),
                       TextField(
                         decoration: const InputDecoration(
+                            // todo work out how to get the text to wrap.
                             labelText: "Member's discount rate (per night)",
                             labelStyle: Constants.textLabelStyle),
                         keyboardType: TextInputType.number,
@@ -1295,33 +1318,57 @@ class HomePageState extends State<HomePage> {
                                     .doubleValue;
                           });
                         },
-                        //inputFormatters: <TextInputFormatter>[
-                        //   DecimalTextInputFormatter (decimalRange: 2)
-                        //]
                       ),
-                      /*
-                          TODO Include expiry date
+                      Table(children: [
+                        TableRow(children: [
+                          const Text("Expired", style: Constants.listTextStyle),
                           ElevatedButton(
-                            onPressed: () => _selectEndDate(context), // Refer step 3
-                            child: Text(
-                              Constants.formatDate(calculatedStay.endStay),
-                              style: const TextStyle(
-                                  color: Colors.black, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                          */
+                              child: Text(
+                                "Expires: ${Constants.formatDate(AppData.rates.dateExpires)}",
+                                style: const TextStyle(
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                              onPressed: () {
+                                // Set state after get response from the datepicker
+                                // so that the dialog gets redrawn
+                                // Seems a bit convoluted, though. Don't have to do this like this
+                                // in the getBoatDetails dialogue.
+                                _selectExpiryDate(context)
+                                    .then((value) => setState(() {}));
+                              })
+                        ])
+                      ]),
                       ElevatedButton(
-                        onPressed: AppData.getIsBoatDataComplete()
-                            ? () {
-                                Navigator.pop(context);
-                              }
-                            : null,
+                        onPressed: () {
+                          Navigator.pop(context);
+                        },
                         child: const Text(
                             'Done'), // If null then button deactivated
                       ),
                     ])));
           });
         });
+  }
+
+  // Update rates expiry date
+  Future<void> _selectExpiryDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(), // Refer step 1
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+
+    if (picked != null) {
+      AppData.rates.dateExpires = picked;
+
+      if (AppData.rates.ratesHaveExpired() == true) {
+        expiryNotice = Rates.expiryNotice;
+      } else {
+        expiryNotice = "";
+      }
+    }
   }
 }
 
