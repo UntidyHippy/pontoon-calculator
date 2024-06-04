@@ -33,6 +33,7 @@ dependencies:
   http:
   logging:
   currency_textfield:
+  sprintf:
   flutter:
     sdk: flutter
 

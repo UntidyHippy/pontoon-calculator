@@ -9,9 +9,10 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 import 'package:currency_textfield/currency_textfield.dart';
+import 'package:sprintf/sprintf.dart';
 
-// Todo - tidy up the input rates dialogue.
 
+// Update Rates dialogue fixed. Values entered are now displayed correctly (02/06/2022)
 // Prompted to update rates when rates have expired (29/04/2024)
 // Sequence for checking rates based on expiry date (28/04/2024)
 // Simplified AppData code (28/03/2023)
@@ -85,6 +86,12 @@ class Constants {
       fontWeight: FontWeight.bold,
       height: 1.2);
 
+  static const TextStyle alertStyle = TextStyle(
+      color: Colors.red,
+      fontSize: 16,
+      fontWeight: FontWeight.bold,
+      height: 1.2);
+
   static const TextStyle welcomeTextStyle = TextStyle(
       fontSize: 18,
       color: Colors.black45,
@@ -140,6 +147,7 @@ class AppData {
   static bool isInFeet = true;
   static bool gotBoatData = false;
   static bool showWelcomeDialog = true;
+  static int numRuns = 0;
 
   static List<CalculatedStay> stays = <CalculatedStay>[];
   static String boatLengthNearestHalfMeter = '';
@@ -151,9 +159,15 @@ class AppData {
 
     boatLength = prefs.getString('BoatLength') ?? '';
     boatName = prefs.getString('BoatName') ?? '';
-    isMember = prefs.getBool('IsMember') ?? false;
+    isMember = prefs.getBool('IsMember') ?? true;
     isInFeet = prefs.getBool('IsInFeet') ?? false;
     showWelcomeDialog = prefs.getBool('ShowWelcomeDialog') ?? true;
+
+    // Increment the number of times the app has been run
+    // This can be useful for testing. Left in as a feature for now.
+    numRuns = prefs.getInt('NumRuns') ?? 0;
+    prefs.setInt('NumRuns', ++numRuns);
+
 
     Map<String, dynamic> decodedStays =
         json.decode(prefs.getString('Stays') ?? "{}");
@@ -178,18 +192,17 @@ class AppData {
     }
 
     // Are the rates current?
-    log.shout("Rates have expired? ${rates.ratesHaveExpired()}");
+    log.shout("Rates have expired? ${rates.ratesHaveExpired(rates.dateExpires)}");
     log.shout("Rates are from: ${rates.whereHaveRatesComeFrom}");
 
     // If the rates have expired, try getting some fresh rates from
     // the internet.
-    if (rates.ratesHaveExpired() == true) {
+    if (rates.ratesHaveExpired(rates.dateExpires) == true) {
       Rates.fetchRates().then((r) {
         // Make sure that the rates that we fetch have not
         // expired as well.
-        if (r.ratesHaveExpired() == false) {
+        if (r.ratesHaveExpired(rates.dateExpires) == false) {
           rates = r;
-
           rates.whereHaveRatesComeFrom = "Rates updated from internet";
           log.shout("Rates are from 3 ${rates.whereHaveRatesComeFrom}");
         }
@@ -216,7 +229,29 @@ class AppData {
 
   /*
   Setters
+
+  Have explicit setters so that the prefs are saved
+
    */
+
+  static void saveRates() {
+    final prefs = SharedPreferences.getInstance();
+    log.shout("SAVING RATES ${rates.visitorRate}");
+    prefs.then((value) {
+      log.shout("ENCODED RATES: ${jsonEncode(rates)}");
+      value.setString('Rates', jsonEncode(rates));
+    });
+  }
+
+  static void setRates(Rates newRates) {
+    rates = newRates;
+    saveRates();
+  }
+
+  static void setVisitorRate(double visitorRate) {
+    rates.visitorRate = visitorRate;
+    saveRates();
+  }
 
   static void setStays(List<CalculatedStay> listOfStays) {
     final prefs = SharedPreferences.getInstance();
@@ -325,8 +360,8 @@ class AppData {
 
 class Rates {
   static const String expiryNotice =
-      "Rates are passed their expiry date. Please update "
-      "rates and enter a new expiry date";
+      "These rates have passed their expiry date.\n\nPlease update these"
+      " rates and enter a new expiry date.\n";
 
   double standardRate;
   double visitorRate;
@@ -350,9 +385,10 @@ class Rates {
         'dateExpires': dateExpires.toString()
       };
 
-  bool ratesHaveExpired() {
+  // Could make static
+  bool ratesHaveExpired(DateTime expiryDate) {
     bool value =
-        dateExpires.difference(DateTime.now()).inDays < 0 ? true : false;
+    expiryDate.difference(DateTime.now()).inDays < 0 ? true : false;
     return value;
   }
 
@@ -373,7 +409,7 @@ class Rates {
         Rates rates = Rates.fromJson(
             jsonDecode(response.body)['Rates'] as Map<String, dynamic>);
 
-        rates.ratesHaveExpired();
+        rates.ratesHaveExpired(rates.dateExpires);
         return rates;
       } else {
         // If the server did not return a 200 OK response,
@@ -521,7 +557,6 @@ class CalculatedStay {
 
   void calculateFee() {
     pontoonCharge = 0;
-
     daysAtVisitorRate = 0;
     daysAtStandardRate = 0;
     daysAtMembersDiscountRate = 0;
@@ -594,7 +629,7 @@ class MyApp extends StatelessWidget {
         // Try running your application with "flutter run". You'll see the
         // application has a blue toolbar. Then, without quitting the app, try
         // changing the primarySwatch below to Colors.green and then invoke
-        // "hot reload" (press "r" in the console where you ran "flutter run",
+        // "hot reload" (s "r" in the console where you ran "flutter run",
         // or simply save your changes to "hot reload" in a Flutter IDE).
         // Notice that the counter didn't reset back to zero; the application
         // is not restarted.
@@ -651,6 +686,8 @@ class HomePageState extends State<HomePage> {
 
   String expiryNotice = "blah blah";
 
+  DateTime newExpiryDate = DateTime.now();
+
   pushToScreen(BuildContext context) {
     Navigator.of(context)
         .push(MaterialPageRoute(builder: (_) => const CalculateFee()));
@@ -659,16 +696,6 @@ class HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-
-    boatLengthTextEditingController.text = AppData.boatLength.toString();
-    boatNameTextEditingController.text = AppData.boatName;
-
-    visitorsRateCurrencyEditingController.text =
-        AppData.rates.visitorRate.toString();
-    membersRateCurrencyEditingController.text =
-        AppData.rates.standardRate.toString();
-    membersDiscountRateCurrencyEditingController.text =
-        AppData.rates.membersDiscountRate.toString();
 
     if (AppData.isMember == true) {
       memberOrVisitorRadioValue = 0;
@@ -705,7 +732,7 @@ class HomePageState extends State<HomePage> {
     log.shout("Is boat data complete: ${AppData.getIsBoatDataComplete()}");
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (AppData.rates.ratesHaveExpired() == true) {
+      if (AppData.rates.ratesHaveExpired(AppData.rates.dateExpires) == true) {
         expiryNotice = Rates.expiryNotice;
         showUpdateRatesDialog();
       }
@@ -732,7 +759,7 @@ class HomePageState extends State<HomePage> {
         showHowToPayDialogue();
         break;
       case "Update rates":
-        if (AppData.rates.ratesHaveExpired() == true) {
+        if (AppData.rates.ratesHaveExpired(AppData.rates.dateExpires) == true) {
           expiryNotice = Rates.expiryNotice;
         } else {
           expiryNotice = "";
@@ -805,7 +832,7 @@ class HomePageState extends State<HomePage> {
     );
   }
 
-  Future<dynamic> showMessageDialogue(String title, String text) {
+  Future<dynamic> showMessageDialog(String title, String text) {
     return showDialog(
         context: context,
         builder: (BuildContext context) {
@@ -834,24 +861,24 @@ class HomePageState extends State<HomePage> {
   }
 
   Future<dynamic> showRatesDialogue() async {
-    String ratesText = 'Visitor Rates:\n'
-        '${AppData.rates.getFormattedRate(AppData.rates.visitorRate)}/M per night\n\n'
-        'Members\' Rates:\nSunday to Thursday night\n'
-        '${AppData.rates.getFormattedRate(AppData.rates.standardRate)}/M per night\n\nFriday and Saturday night\n'
-        '${AppData.rates.getFormattedRate(AppData.rates.membersDiscountRate)}/M per night\n';
+    String ratesText = '\nVisitors:\n\n'
+        '${AppData.rates.getFormattedRate(AppData.rates.visitorRate)}/M per night\n\n\n'
+        'Members:\n\nSunday to Thursday night\n'
+        '${AppData.rates.getFormattedRate(AppData.rates.membersDiscountRate)}/M per night\nFriday and Saturday night\n'
+        '${AppData.rates.getFormattedRate(AppData.rates.standardRate)}/M per night\n';
 
-    return showMessageDialogue('Rates', ratesText);
+    return showMessageDialog('Rates', ratesText);
   }
 
   Future<dynamic> showHowToPayDialogue() async {
     String howToPayText =
         'These are the different ways you can pay:\n\n blah blah blah';
 
-    return showMessageDialogue('How to pay', howToPayText);
+    return showMessageDialog('How to pay', howToPayText);
   }
 
   Future<dynamic> showWelcomeDialogue() async {
-    String welcomeText = 'This is the Edinburgh Marina Ltd app for '
+    String welcomeText = 'This an app for '
         'calculating pontoon charges at Granton Harbour.\n\n'
         'Click on the \'plus\' button at the '
         'bottom right hand corner of the screen to add a new '
@@ -992,8 +1019,7 @@ class HomePageState extends State<HomePage> {
           onPressed: (() => Navigator.pushNamed(context, '/second')
               .whenComplete(
                   () => setState(() => log.info('Setting state Done')))),
-          //Todo - make the add button bolder
-          child: const Icon(Icons.add, color: Colors.white)),
+          child: const Icon(Icons.add, color: Colors.black)),
     );
   }
 
@@ -1256,6 +1282,27 @@ class HomePageState extends State<HomePage> {
 
   /// Get updated rates for birthing on the pontoon
   Future showUpdateRatesDialog() {
+
+    // Currency editing controller needs two decimal places represented in the string
+    // to parse the amount correctly (e.g. it will parse "0.5" as "0.05". A dart solution
+    // could be to use num.toStringAsPrecision, but this behaves in the following way and
+    // doesn't give us what we want:
+    //
+    // double a = 0.5; a.toStringAsPrecision(2); # this returns "0.50"
+    // double b = 1.0; a.toStringAsPrecision(2); # this returns "1.0"
+    // double b = 1.0; a.toStringAsPrecision(3); # this returns "1.00"
+    //
+    // so use sprintf("%.2f,[a]); instead.
+
+    visitorsRateCurrencyEditingController.text =
+        sprintf("%.2f", [AppData.rates.visitorRate]);
+    membersRateCurrencyEditingController.text =
+        sprintf("%.2f", [AppData.rates.standardRate]);
+    membersDiscountRateCurrencyEditingController.text =
+        sprintf("%.2f", [AppData.rates.membersDiscountRate]);
+
+    newExpiryDate = AppData.rates.dateExpires.copyWith();
+
     return showDialog(
         context: context,
         builder: (BuildContext context) {
@@ -1276,11 +1323,7 @@ class HomePageState extends State<HomePage> {
                         keyboardType: TextInputType.number,
                         controller: visitorsRateCurrencyEditingController,
                         onChanged: (text) {
-                          setState(() {
-                            AppData.rates.visitorRate =
-                                visitorsRateCurrencyEditingController
-                                    .doubleValue;
-                          });
+                          setState(() {});
                         },
                         //inputFormatters: <TextInputFormatter>[
                         //   DecimalTextInputFormatter (decimalRange: 2)
@@ -1293,11 +1336,7 @@ class HomePageState extends State<HomePage> {
                         keyboardType: TextInputType.number,
                         controller: membersRateCurrencyEditingController,
                         onChanged: (text) {
-                          setState(() {
-                            AppData.rates.standardRate =
-                                membersRateCurrencyEditingController
-                                    .doubleValue;
-                          });
+                          setState(() {});
                         },
                         //inputFormatters: <TextInputFormatter>[
                         //   DecimalTextInputFormatter (decimalRange: 2)
@@ -1312,19 +1351,28 @@ class HomePageState extends State<HomePage> {
                         controller:
                             membersDiscountRateCurrencyEditingController,
                         onChanged: (text) {
-                          setState(() {
-                            AppData.rates.membersDiscountRate =
-                                membersDiscountRateCurrencyEditingController
-                                    .doubleValue;
-                          });
+                          setState(() {});
                         },
                       ),
-                      Table(children: [
+                      Table(columnWidths: const {
+                        0: FlexColumnWidth(3),
+                        1: FlexColumnWidth(3)
+                      }, children: [
                         TableRow(children: [
-                          const Text("Expired", style: Constants.listTextStyle),
+                          Container(
+                            alignment: Alignment.centerLeft,
+                            padding: const EdgeInsets.only(top: 17.0),
+                            child: Text(
+                                AppData.rates.ratesHaveExpired(newExpiryDate)
+                                    ? "Rates expired:"
+                                    : "Rates expire:",
+                                style: AppData.rates.ratesHaveExpired(newExpiryDate)
+                                    ? Constants.alertStyle
+                                    : Constants.questionsStyle),
+                          ),
                           ElevatedButton(
                               child: Text(
-                                "Expires: ${Constants.formatDate(AppData.rates.dateExpires)}",
+                                Constants.formatDate(AppData.rates.dateExpires),
                                 style: const TextStyle(
                                     color: Colors.black,
                                     fontWeight: FontWeight.bold),
@@ -1334,11 +1382,65 @@ class HomePageState extends State<HomePage> {
                                 // so that the dialog gets redrawn
                                 // Seems a bit convoluted, though. Don't have to do this like this
                                 // in the getBoatDetails dialogue.
-                                _selectExpiryDate(context)
-                                    .then((value) => setState(() {}));
+                                showDatePicker(
+                                  context: context,
+                                  initialDate: DateTime.now(), // Refer step 1
+                                  firstDate: DateTime.now(),
+                                  lastDate: DateTime.now().add(const Duration(days: 365)),
+                                ).then ( (picked) {
+
+                                if (picked != null) {
+                                  newExpiryDate = picked;
+
+                                  if (AppData.rates.ratesHaveExpired(newExpiryDate) == true) {
+                                    expiryNotice = Rates.expiryNotice;
+                                  } else {
+                                    expiryNotice = "";
+                                  }
+                                }});
+                                setState(() {});
                               })
-                        ])
+                        ]),
+                        // TableRow just to add a bit of space. Clunky,
+                        // but if I use the spacer widget, the framework
+                        // crashes horribly.
+                        const TableRow(children: [Text(""), Text("")]),
                       ]),
+                        Table(children: [
+                        TableRow(children: [
+                          ElevatedButton(
+                            onPressed: () {
+                              Navigator.pop(context);
+                            },
+                            child: const Text(
+                                'Cancel'), // If null then button deactivated
+                          ),
+                          ElevatedButton(
+                            onPressed: () {
+                              Navigator.pop(context);
+
+                              AppData.rates.visitorRate =
+                                  visitorsRateCurrencyEditingController
+                                      .doubleValue;
+
+                              AppData.rates.membersDiscountRate =
+                                  membersDiscountRateCurrencyEditingController
+                                      .doubleValue;
+
+                              AppData.rates.standardRate =
+                                  membersRateCurrencyEditingController
+                                      .doubleValue;
+
+                              AppData.rates.dateExpires = newExpiryDate;
+                              AppData.saveRates();
+                            },
+                            child: const Text(
+                                'Update'), // If null then button deactivated
+                          ),
+                        ]),
+                      ])
+
+                      /*
                       ElevatedButton(
                         onPressed: () {
                           Navigator.pop(context);
@@ -1346,29 +1448,11 @@ class HomePageState extends State<HomePage> {
                         child: const Text(
                             'Done'), // If null then button deactivated
                       ),
+
+                       */
                     ])));
           });
         });
-  }
-
-  // Update rates expiry date
-  Future<void> _selectExpiryDate(BuildContext context) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(), // Refer step 1
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-    );
-
-    if (picked != null) {
-      AppData.rates.dateExpires = picked;
-
-      if (AppData.rates.ratesHaveExpired() == true) {
-        expiryNotice = Rates.expiryNotice;
-      } else {
-        expiryNotice = "";
-      }
-    }
   }
 }
 
@@ -1710,310 +1794,4 @@ class DecimalTextInputFormatter extends TextInputFormatter {
   }
 }
 
-/*
-class SetUpBlaBla extends StatefulWidget {
-  SetUpBlaBla({Key key, this.title}) : super(key: key);
 
-  final String title;
-
-  @override
-  _SetUpPageState createState() => _SetUpPageState();
-}
-
-class _SetUpPageState extends State<SetUpBlaBla> {
-  int memberOrVisitorRadioValue = -1;
-  int feetOrMetersRadioValue = -1;
-
-
-  @override
-  Widget build(BuildContext context) {
-    return _getSetupInfo(context);
-
-  }
-
-  Scaffold _getSetupInfo(BuildContext context) {
-    TextEditingController boatLengthTextEditingController =
-        TextEditingController();
-    TextEditingController boatNameTextEditingController =
-        TextEditingController();
-
-    boatLengthTextEditingController.text = BoatData.getBoatLength().toString();
-    boatNameTextEditingController.text = BoatData.getBoatName();
-
-    if (BoatData.getIsMember() == true)
-      memberOrVisitorRadioValue = 0;
-    else
-      memberOrVisitorRadioValue = 1;
-
-    if (BoatData.isInFeet == true)
-      feetOrMetersRadioValue = 0;
-    else
-      feetOrMetersRadioValue = 1;
-
-    BoatData._calculateToNearestHalfMeter();
-
-    return Scaffold(
-        appBar: AppBar(
-          // Here we take the value from the MyHomePage object that was created by
-          // the App.build method, and use it to set our appbar title.
-          title: Text(widget.title),
-        ),
-        body: Container(
-          padding: EdgeInsets.only(left: 10, top: 10, right: 10, bottom: 10),
-          decoration: BoxDecoration(
-              shape: BoxShape.rectangle,
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(5),
-              boxShadow: [
-                BoxShadow(
-                    color: Colors.black, offset: Offset(0, 10), blurRadius: 10)
-              ]),
-
-          // Center is a layout widget. It takes a single child and positions it
-          // in the middle of the parent.
-          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: <
-              Widget>[
-            TextField(
-              decoration: new InputDecoration(labelText: "Boat name"),
-              keyboardType: TextInputType.text,
-              controller: boatNameTextEditingController,
-              onChanged: (text) {
-                BoatData.setBoatName(text);
-                log.info('Boat name: $text');
-              },
-              //inputFormatters: <TextInputFormatter>[
-              //   DecimalTextInputFormatter (decimalRange: 2)
-              //]
-            ),
-            Row(children: <Widget>[
-              ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minWidth: 70,
-                    minHeight: 70,
-                    maxWidth: 150,
-                    maxHeight: 150,
-                  ),
-                  child: TextField(
-                      maxLength: 5,
-                      maxLengthEnforced: true,
-                      decoration: new InputDecoration(labelText: "Boat length"),
-                      keyboardType:
-                          TextInputType.numberWithOptions(decimal: true),
-                      onChanged: (text) {
-                        BoatData.setBoatLength(text);
-                        BoatData._calculateToNearestHalfMeter();
-                      },
-                      controller: boatLengthTextEditingController,
-                      inputFormatters: <TextInputFormatter>[
-                        DecimalTextInputFormatter(
-                          decimalRange: 2,
-                        )
-                      ])),
-              Radio(
-                  value: 0,
-                  groupValue: feetOrMetersRadioValue,
-                  onChanged: (value) {
-                    setState(() {
-                      feetOrMetersRadioValue = value;
-                      BoatData.setIsInFeet(true);
-                      BoatData._calculateToNearestHalfMeter();
-                    });
-                  }),
-              Text(
-                'ft',
-                style:
-                    TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-              ),
-              Radio(
-                  value: 1,
-                  groupValue: feetOrMetersRadioValue,
-                  onChanged: (value) {
-                    setState(() {
-                      BoatData.setIsInFeet(false);
-                      feetOrMetersRadioValue = value;
-                      BoatData._calculateToNearestHalfMeter();
-                    });
-                  }),
-              Text(
-                'M',
-                style:
-                    TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-              ),
-            ]),
-            Text(
-              'Are you a member of FCYC or RFYC, or are you a visitor?',
-              style:
-                  TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-            ),
-            Row(children: <Widget>[
-              Text(
-                'Member of FCYC or RFYC',
-                style:
-                    TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-              ),
-              Radio(
-                  value: 0,
-                  groupValue: memberOrVisitorRadioValue,
-                  onChanged: (value) {
-                    setState(() {
-                      log.info('Member or visitor radio value: $value');
-                      memberOrVisitorRadioValue = value;
-                      BoatData.setIsMember(true);
-                    });
-                  })
-            ]),
-            Row(children: <Widget>[
-              Text(
-                'Visitor',
-                style:
-                    TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-              ),
-              Radio(
-                  value: 1,
-                  groupValue: memberOrVisitorRadioValue,
-                  onChanged: (value) {
-                    setState(() {
-                      log.info('Member or visitor radio value: $value');
-                      memberOrVisitorRadioValue = value;
-                      BoatData.setIsMember(false);
-                    });
-                  })
-            ]),
-            Text(
-              'Boat length to nearest half meter ' + BoatData.boatLengthNearestHalfMeter,
-              style:
-                  TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-            ),
-            ElevatedButton(
-              child: Text('Done'),
-              onPressed: () {
-                Navigator.pop(context); // Navigate to second route when tapped.
-                BoatData.isBoatDataComplete();
-                setState(() {});
-              },
-            ),
-          ]),
-        ));
-  }
-}
-
-
- */
-
-/*
-void main() {
-  runApp(const MyApp());
-}
-*/
-
-/*
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  // This widget is the root of your application.
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // Try running your application with "flutter run". You'll see the
-        // application has a blue toolbar. Then, without quitting the app, try
-        // changing the primarySwatch below to Colors.green and then invoke
-        // "hot reload" (press "r" in the console where you ran "flutter run",
-        // or simply save your changes to "hot reload" in a Flutter IDE).
-        // Notice that the counter didn't reset back to zero; the application
-        // is not restarted.
-        primarySwatch: Colors.blue,
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
-    );
-  }
-}
-
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Invoke "debug painting" (press "p" in the console, choose the
-          // "Toggle Debug Paint" action from the Flutter Inspector in Android
-          // Studio, or the "Toggle Debug Paint" command in Visual Studio Code)
-          // to see the wireframe for each widget.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
-            ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headline4,
-            ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
-    );
-  }
-}
-*/
